@@ -15,6 +15,11 @@ function getOAuth2Client() {
 
 // Start OAuth flow
 router.get('/connect', authenticate, (req, res) => {
+  console.log('[Gmail OAuth] Config:', {
+    clientId: process.env.GOOGLE_CLIENT_ID ? '✓ set' : '✗ missing',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ? '✓ set' : '✗ missing',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_URL || 'http://localhost:3001'}/api/gmail/callback`
+  });
   const oauth2Client = getOAuth2Client();
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -25,6 +30,7 @@ router.get('/connect', authenticate, (req, res) => {
     ],
     state: String(req.agent.id)
   });
+  console.log('[Gmail OAuth] Generated auth URL:', url);
   res.json({ url });
 });
 
