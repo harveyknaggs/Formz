@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { getDb } = require('../db');
 const { authenticate } = require('../middleware/auth');
 
+const JWT_SECRET = JWT_SECRET || 'formflow-re-default-jwt-secret-change-me';
 const router = express.Router();
 
 router.post('/login', (req, res) => {
@@ -19,7 +20,7 @@ router.post('/login', (req, res) => {
 
   const token = jwt.sign(
     { id: agent.id, email: agent.email, name: agent.name },
-    process.env.JWT_SECRET,
+    JWT_SECRET,
     { expiresIn: '7d' }
   );
 
