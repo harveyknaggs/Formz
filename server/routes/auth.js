@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { getDb } = require('../db');
 const { authenticate } = require('../middleware/auth');
 
-const JWT_SECRET = JWT_SECRET || 'formflow-re-default-jwt-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET || 'formflow-re-default-jwt-secret-change-me';
 const router = express.Router();
 
 router.post('/login', (req, res) => {
