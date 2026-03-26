@@ -93,8 +93,7 @@ export default function ClientForm() {
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-navy">Hometown Real Estate</h1>
-              <p className="text-sm text-primary">@realty</p>
+              <img src="/formz-logo.svg" alt="Formz" className="h-10" />
             </div>
             <div className="text-right text-sm text-slate-500">
               <p>Prepared for: <strong className="text-slate-800">{formInfo.client_name}</strong></p>

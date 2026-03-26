@@ -11,8 +11,7 @@ export default function FormConfirmation() {
         </p>
         <p className="text-sm text-slate-400">You may now close this window.</p>
         <div className="mt-6 pt-6 border-t border-slate-200">
-          <p className="text-sm font-semibold text-navy">Hometown Real Estate</p>
-          <p className="text-xs text-primary">@realty</p>
+          <img src="/formz-logo.svg" alt="Formz" className="h-8 mx-auto" />
         </div>
       </div>
     </div>

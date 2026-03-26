@@ -28,8 +28,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-navy">FormFlow RE</h1>
-          <p className="text-primary mt-2">@realty — Hometown Real Estate</p>
+          <img src="/formz-logo.svg" alt="Formz" className="h-14 mx-auto mb-2" />
+          <p className="text-primary mt-2">Hometown Real Estate</p>
         </div>
 
         <div className="card">
