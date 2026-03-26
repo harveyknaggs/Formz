@@ -9,6 +9,7 @@ import FormsSent from './pages/FormsSent';
 import Submissions from './pages/Submissions';
 import SubmissionReview from './pages/SubmissionReview';
 import Settings from './pages/Settings';
+import Admin from './pages/Admin';
 import ClientForm from './pages/ClientForm';
 import FormConfirmation from './pages/FormConfirmation';
 
@@ -39,6 +40,7 @@ function AppRoutes() {
         <Route path="submissions" element={<Submissions />} />
         <Route path="submissions/:id" element={<SubmissionReview />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="admin" element={<Admin />} />
       </Route>
     </Routes>
   );

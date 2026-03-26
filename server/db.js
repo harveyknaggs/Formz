@@ -133,9 +133,11 @@ async function init() {
     );
   `);
 
-  // Migrate: add gmail columns if missing
+  // Migrate: add columns if missing
   try { database.exec('ALTER TABLE agents ADD COLUMN gmail_tokens TEXT'); } catch {}
   try { database.exec('ALTER TABLE agents ADD COLUMN gmail_email TEXT'); } catch {}
+  try { database.exec('ALTER TABLE agents ADD COLUMN is_admin INTEGER DEFAULT 0'); } catch {}
+  try { database.exec('ALTER TABLE agents ADD COLUMN company TEXT'); } catch {}
 
   save();
 
@@ -147,15 +149,19 @@ async function init() {
 
   if (count === 0) {
     const hash = bcrypt.hashSync('admin123', 10);
-    database.run('INSERT INTO agents (email, password, name, phone) VALUES (?, ?, ?, ?)', [
+    database.run('INSERT INTO agents (email, password, name, phone, is_admin) VALUES (?, ?, ?, ?, ?)', [
       'agent@hometownrealty.co.nz',
       hash,
       'John Mitchell',
-      '+64 21 555 0100'
+      '+64 21 555 0100',
+      1
     ]);
     save();
-    console.log('Default agent created: agent@hometownrealty.co.nz / admin123');
+    console.log('Default admin created: agent@hometownrealty.co.nz / admin123');
   }
+
+  // Ensure first agent is admin
+  try { database.exec("UPDATE agents SET is_admin = 1 WHERE id = 1 AND is_admin IS NULL OR is_admin = 0"); } catch {}
 
   return wrapper;
 }

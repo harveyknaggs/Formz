@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
     if (!res.ok) throw new Error(data.error);
     localStorage.setItem('ff_token', data.token);
     setToken(data.token);
-    setAgent(data.agent);
+    setAgent({ ...data.agent, is_admin: data.agent.is_admin || 0 });
     return data;
   };
 
