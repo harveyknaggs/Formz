@@ -12,7 +12,9 @@ async function generateSummary(formData, formType, formCategory) {
     vendor_disclosure: 'Vendor Disclosure',
     agency_agreement: 'Agency Agreement',
     purchaser_acknowledgement: 'Purchaser Acknowledgement',
-    sale_purchase_agreement: 'Sale & Purchase Agreement'
+    sale_purchase_agreement: 'Sale & Purchase Agreement',
+    vendor_forms: 'Vendor Forms',
+    buyer_forms: 'Buyer Forms'
   };
   const formLabel = formLabels[formType] || formType;
   const categoryLabel = formCategory === 'vendor' ? 'Vendor' : 'Buyer';
@@ -30,20 +32,37 @@ async function generateSummary(formData, formType, formCategory) {
         max_tokens: 1500,
         messages: [{
           role: 'user',
-          content: `You are an expert New Zealand real estate assistant working for Hometown Real Estate (@realty). Analyse this completed ${categoryLabel} ${formLabel} form and provide a structured summary for the listing agent.
+          content: `You are a senior NZ real estate compliance analyst. Review this completed ${categoryLabel} ${formLabel} and produce a concise executive briefing for the listing agent.
 
 Form data:
 ${JSON.stringify(formData, null, 2)}
 
-Provide a clear, professional summary with these sections:
-1. **Client Overview** — Name, contact details, role (vendor/buyer)
-2. **Property Details** — Address, type, key features mentioned
-3. **Key Disclosures** — Flag anything marked "Yes" that needs attention (structural issues, toxicology, boundary disputes, etc.)
-4. **Red Flags** — Anything unusual, inconsistent, or requiring immediate attention
-5. **Recommended Next Steps** — Specific actions the agent should take
-6. **Overall Assessment** — One of: ✅ Ready to Proceed | ⚠️ Needs Attention | 🔴 Action Required
+Write a professional briefing using this exact format. Be direct, factual, and actionable. No filler. Every sentence must add value.
 
-Be concise but thorough. Focus on what matters for the agent's next actions. Use NZ real estate terminology where appropriate.`
+## Client
+- Name, contact, and role in one line
+
+## Property
+- Address and any details provided
+
+## Key Findings
+Bullet each significant disclosure or data point. For each, state the fact and its implication. Flag anything marked "Yes" on disclosure questions — these are material and must be addressed before listing. If nothing was flagged, state "No material disclosures identified."
+
+## Risk Assessment
+State one of:
+- **LOW RISK** — All disclosures clear, standard transaction
+- **MEDIUM RISK** — Minor items require follow-up before proceeding
+- **HIGH RISK** — Material issues identified, do not proceed without resolution
+
+Then explain why in 1-2 sentences.
+
+## Required Actions
+Numbered list of specific next steps the agent must take, in priority order. Be precise — "Obtain LIM report from [council]" not "Check council records." If no actions needed, state "No immediate actions required — proceed to listing."
+
+## Signatures
+Confirm who signed, timestamps, and flag if any required signatures are missing.
+
+Keep the entire summary under 300 words. Write for a busy professional who needs to act on this immediately.`
         }]
       })
     });

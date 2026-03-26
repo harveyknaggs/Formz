@@ -6,6 +6,7 @@ export default function Submissions() {
   const { api } = useAuth();
   const [subs, setSubs] = useState([]);
   const [filter, setFilter] = useState({ form_type: '', status: '' });
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   const load = () => {
     const params = new URLSearchParams();
@@ -23,11 +24,36 @@ export default function Submissions() {
     buyer_forms: 'Buyer Forms'
   }[t] || t);
 
+  const toggleGroup = (key) => {
+    setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Group submissions by client + form_category + date (same day)
+  const grouped = {};
+  subs.forEach(s => {
+    const date = new Date(s.submitted_at).toLocaleDateString('en-NZ');
+    const key = `${s.client_name}-${s.form_category}-${date}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        client_name: s.client_name,
+        client_email: s.client_email,
+        form_category: s.form_category,
+        date,
+        submissions: [],
+        latestStatus: s.status,
+        latestDate: s.submitted_at
+      };
+    }
+    grouped[key].submissions.push(s);
+  });
+
+  const groups = Object.entries(grouped);
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Submissions</h1>
-        <p className="text-slate-500 mt-1">{subs.length} submission{subs.length !== 1 ? 's' : ''}</p>
+        <p className="text-slate-500 mt-1">{subs.length} submission{subs.length !== 1 ? 's' : ''} across {groups.length} group{groups.length !== 1 ? 's' : ''}</p>
       </div>
 
       {/* Filters */}
@@ -49,38 +75,105 @@ export default function Submissions() {
         </select>
       </div>
 
-      <div className="card">
-        {subs.length === 0 ? (
-          <p className="text-slate-400 text-center py-8">No submissions found.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left py-3 px-2 font-medium text-slate-500">Client</th>
-                  <th className="text-left py-3 px-2 font-medium text-slate-500">Form</th>
-                  <th className="text-left py-3 px-2 font-medium text-slate-500">Category</th>
-                  <th className="text-left py-3 px-2 font-medium text-slate-500">Status</th>
-                  <th className="text-left py-3 px-2 font-medium text-slate-500">Submitted</th>
-                  <th className="text-left py-3 px-2 font-medium text-slate-500"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {subs.map(s => (
-                  <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50">
-                    <td className="py-3 px-2 font-medium">{s.client_name}</td>
-                    <td className="py-3 px-2 text-slate-600">{formLabel(s.form_type)}</td>
-                    <td className="py-3 px-2 text-slate-600 capitalize">{s.form_category}</td>
-                    <td className="py-3 px-2"><span className={`badge-${s.status}`}>{s.status}</span></td>
-                    <td className="py-3 px-2 text-slate-500">{new Date(s.submitted_at).toLocaleDateString('en-NZ')}</td>
-                    <td className="py-3 px-2">
-                      <Link to={`/submissions/${s.id}`} className="btn-primary text-xs py-1 px-3">Review</Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="space-y-3">
+        {groups.length === 0 ? (
+          <div className="card">
+            <p className="text-slate-400 text-center py-8">No submissions found.</p>
           </div>
+        ) : (
+          groups.map(([key, group]) => {
+            const isExpanded = expandedGroups[key];
+            const allReviewed = group.submissions.every(s => s.status === 'reviewed');
+            const anySubmitted = group.submissions.some(s => s.status === 'submitted');
+
+            return (
+              <div key={key} className="card p-0 overflow-hidden">
+                {/* Group Header */}
+                <div
+                  className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                  onClick={() => toggleGroup(key)}
+                >
+                  <div className="flex items-center gap-4">
+                    {/* Expand/collapse arrow */}
+                    <svg
+                      className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+
+                    {/* Client avatar */}
+                    <div className="w-10 h-10 rounded-full bg-navy flex items-center justify-center text-white font-bold text-sm">
+                      {group.client_name.charAt(0)}
+                    </div>
+
+                    <div>
+                      <p className="font-semibold text-slate-900">{group.client_name}</p>
+                      <p className="text-xs text-slate-500">
+                        <span className="capitalize">{group.form_category}</span> Forms · {group.submissions.length} form{group.submissions.length !== 1 ? 's' : ''} · {group.date}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                      allReviewed ? 'bg-green-50 text-green-700' :
+                      anySubmitted ? 'bg-blue-50 text-blue-700' :
+                      'bg-amber-50 text-amber-700'
+                    }`}>
+                      {allReviewed ? 'All Reviewed' : anySubmitted ? 'Needs Review' : 'Pending'}
+                    </span>
+
+                    {/* Quick review all button */}
+                    {group.submissions.length === 1 ? (
+                      <Link
+                        to={`/submissions/${group.submissions[0].id}`}
+                        onClick={e => e.stopPropagation()}
+                        className="btn-primary text-xs py-1.5 px-4"
+                      >
+                        Review
+                      </Link>
+                    ) : (
+                      <Link
+                        to={`/submissions/${group.submissions[0].id}`}
+                        onClick={e => e.stopPropagation()}
+                        className="btn-primary text-xs py-1.5 px-4"
+                      >
+                        Review All
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded individual forms */}
+                {isExpanded && (
+                  <div className="border-t border-slate-100">
+                    {group.submissions.map((s, i) => (
+                      <div
+                        key={s.id}
+                        className={`flex items-center justify-between px-5 py-3 pl-16 ${
+                          i < group.submissions.length - 1 ? 'border-b border-slate-50' : ''
+                        } hover:bg-slate-50`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="text-sm text-slate-700">{formLabel(s.form_type)}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`badge-${s.status} text-xs`}>{s.status}</span>
+                          <Link to={`/submissions/${s.id}`} className="text-primary text-xs font-medium hover:underline">
+                            Review →
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>

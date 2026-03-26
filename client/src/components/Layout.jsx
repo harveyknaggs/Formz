@@ -32,8 +32,16 @@ export default function Layout() {
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-navy text-white flex flex-col transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6 border-b border-white/10">
-          <img src="/formz-logo.svg" alt="Formz" className="h-14 brightness-0 invert" />
+        <div className="px-6 py-8 border-b border-white/10 flex items-center justify-center">
+          <svg width="200" height="52" viewBox="180 65 500 120" xmlns="http://www.w3.org/2000/svg">
+            <rect x="220" y="80" width="88" height="88" rx="20" fill="#4f46e5"/>
+            <rect x="232" y="96" width="30" height="5" rx="2.5" fill="white"/>
+            <rect x="232" y="108" width="22" height="5" rx="2.5" fill="white"/>
+            <rect x="232" y="120" width="26" height="5" rx="2.5" fill="white"/>
+            <rect x="232" y="132" width="18" height="5" rx="2.5" fill="white"/>
+            <rect x="232" y="144" width="24" height="5" rx="2.5" fill="white"/>
+            <text x="326" y="145" fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fontWeight="700" fontSize="72" letterSpacing="-2" fill="white">Formz</text>
+          </svg>
         </div>
 
         <nav className="flex-1 p-4 space-y-1">
