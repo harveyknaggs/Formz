@@ -28,13 +28,13 @@ export default function Dashboard() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
-          { label: 'Total Clients', value: stats?.totalClients ?? '—', color: 'bg-blue-50 text-blue-700', icon: '👥' },
-          { label: 'Sent This Month', value: stats?.formsSentMonth ?? '—', color: 'bg-purple-50 text-purple-700', icon: '📤' },
-          { label: 'Submitted', value: stats?.formsSubmitted ?? '—', color: 'bg-green-50 text-green-700', icon: '📋' },
-          { label: 'Pending', value: stats?.formsPending ?? '—', color: 'bg-amber-50 text-amber-700', icon: '⏳' },
+          { label: 'Total Clients', value: stats?.totalClients ?? '—', color: 'bg-blue-50 text-blue-600', icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg> },
+          { label: 'Sent This Month', value: stats?.formsSentMonth ?? '—', color: 'bg-purple-50 text-purple-600', icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg> },
+          { label: 'Submitted', value: stats?.formsSubmitted ?? '—', color: 'bg-green-50 text-green-600', icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+          { label: 'Pending', value: stats?.formsPending ?? '—', color: 'bg-amber-50 text-amber-600', icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
         ].map((s, i) => (
           <div key={i} className="card flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center text-xl ${s.color}`}>{s.icon}</div>
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${s.color}`}>{s.icon}</div>
             <div>
               <p className="text-2xl font-bold text-slate-900">{s.value}</p>
               <p className="text-sm text-slate-500">{s.label}</p>

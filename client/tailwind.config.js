@@ -4,8 +4,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: { DEFAULT: '#0099cc', dark: '#007aa3', light: '#33b3d9' },
-        navy: { DEFAULT: '#003087', dark: '#002266', light: '#1a4a9e' },
+        primary: { DEFAULT: '#3b82f6', dark: '#2563eb', light: '#60a5fa' },
+        navy: { DEFAULT: '#1e3a5f', dark: '#152d4a', light: '#2a5080' },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
