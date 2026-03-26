@@ -2,25 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const VENDOR_FORMS = [
-  { value: 'market_appraisal', label: 'Market Appraisal' },
-  { value: 'vendor_disclosure', label: 'Vendor Disclosure' },
-  { value: 'agency_agreement', label: 'Agency Agreement' },
-];
-
-const BUYER_FORMS = [
-  { value: 'purchaser_acknowledgement', label: 'Purchaser Acknowledgement' },
-  { value: 'sale_purchase_agreement', label: 'Sale & Purchase Agreement' },
-];
-
 export default function ClientDetail() {
   const { id } = useParams();
   const { api } = useAuth();
   const [client, setClient] = useState(null);
   const [showSend, setShowSend] = useState(false);
   const [category, setCategory] = useState('vendor');
-  const [selected, setSelected] = useState([]);
   const [sending, setSending] = useState(false);
+  const [sentLink, setSentLink] = useState('');
 
   const load = () => api(`/api/clients/${id}`).then(setClient).catch(console.error);
   useEffect(() => { load(); }, [id]);
@@ -28,19 +17,18 @@ export default function ClientDetail() {
   const formLabel = (t) => ({
     market_appraisal: 'Market Appraisal', vendor_disclosure: 'Vendor Disclosure',
     agency_agreement: 'Agency Agreement', purchaser_acknowledgement: 'Purchaser Acknowledgement',
-    sale_purchase_agreement: 'Sale & Purchase'
+    sale_purchase_agreement: 'Sale & Purchase', vendor_forms: 'Vendor Forms',
+    buyer_forms: 'Buyer Forms'
   }[t] || t);
 
   const handleSend = async () => {
-    if (!selected.length) return alert('Select at least one form');
     setSending(true);
     try {
-      await api('/api/forms/send', {
+      const result = await api('/api/forms/send', {
         method: 'POST',
-        body: JSON.stringify({ client_id: parseInt(id), form_category: category, form_types: selected })
+        body: JSON.stringify({ client_id: parseInt(id), form_category: category })
       });
-      setShowSend(false);
-      setSelected([]);
+      setSentLink(result.link || '');
       load();
     } catch (err) {
       alert(err.message);
@@ -49,11 +37,7 @@ export default function ClientDetail() {
     }
   };
 
-  const toggle = (v) => setSelected(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
-
   if (!client) return <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
-
-  const forms = category === 'vendor' ? VENDOR_FORMS : BUYER_FORMS;
 
   return (
     <div>
@@ -64,39 +48,69 @@ export default function ClientDetail() {
           <h1 className="text-2xl font-bold text-slate-900">{client.name}</h1>
           <p className="text-slate-500">{client.email} {client.phone && `· ${client.phone}`}</p>
         </div>
-        <button onClick={() => setShowSend(true)} className="btn-primary">Send Forms</button>
+        <button onClick={() => { setShowSend(true); setSentLink(''); }} className="btn-primary">Send Forms</button>
       </div>
 
       {/* Send Forms Modal */}
       {showSend && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowSend(false)}>
           <div className="card w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-4">Send Forms to {client.name}</h2>
+            {sentLink ? (
+              <>
+                <div className="text-center py-4">
+                  <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                  <h2 className="text-lg font-semibold mb-2">Forms Sent!</h2>
+                  <p className="text-slate-500 text-sm mb-4">An email with the form link has been sent to {client.name}.</p>
+                  <div className="bg-slate-50 rounded-lg p-3 text-sm break-all text-slate-600">
+                    {sentLink}
+                  </div>
+                </div>
+                <div className="flex justify-end mt-4">
+                  <button onClick={() => setShowSend(false)} className="btn-primary">Done</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold mb-2">Send Forms to {client.name}</h2>
+                <p className="text-sm text-slate-500 mb-4">Choose the form pack to send. The client will receive a single link with all tabs.</p>
 
-            <div className="flex gap-2 mb-4">
-              <button onClick={() => { setCategory('vendor'); setSelected([]); }} className={`px-4 py-2 rounded-lg text-sm font-medium ${category === 'vendor' ? 'bg-navy text-white' : 'bg-slate-100 text-slate-600'}`}>
-                Vendor Forms
-              </button>
-              <button onClick={() => { setCategory('buyer'); setSelected([]); }} className={`px-4 py-2 rounded-lg text-sm font-medium ${category === 'buyer' ? 'bg-navy text-white' : 'bg-slate-100 text-slate-600'}`}>
-                Buyer Forms
-              </button>
-            </div>
+                <div className="space-y-3 mb-6">
+                  <label
+                    onClick={() => setCategory('vendor')}
+                    className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      category === 'vendor' ? 'border-[#0099cc] bg-[#0099cc]/5' : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <input type="radio" checked={category === 'vendor'} onChange={() => setCategory('vendor')} className="w-4 h-4 text-[#0099cc]" />
+                    <div>
+                      <div className="font-semibold text-slate-900">Vendor Forms</div>
+                      <div className="text-xs text-slate-500 mt-0.5">Market Appraisal · Vendor Disclosure · Agency Agreement · Seller's Guide</div>
+                    </div>
+                  </label>
+                  <label
+                    onClick={() => setCategory('buyer')}
+                    className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      category === 'buyer' ? 'border-[#003087] bg-[#003087]/5' : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <input type="radio" checked={category === 'buyer'} onChange={() => setCategory('buyer')} className="w-4 h-4 text-[#003087]" />
+                    <div>
+                      <div className="font-semibold text-slate-900">Buyer Forms</div>
+                      <div className="text-xs text-slate-500 mt-0.5">Purchaser Acknowledgement · Sale & Purchase Agreement · Buyer's Guide</div>
+                    </div>
+                  </label>
+                </div>
 
-            <div className="space-y-2 mb-6">
-              {forms.map(f => (
-                <label key={f.value} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                  <input type="checkbox" checked={selected.includes(f.value)} onChange={() => toggle(f.value)} className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium">{f.label}</span>
-                </label>
-              ))}
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowSend(false)} className="btn-secondary">Cancel</button>
-              <button onClick={handleSend} disabled={sending || !selected.length} className="btn-primary">
-                {sending ? 'Sending...' : `Send ${selected.length} Form${selected.length !== 1 ? 's' : ''}`}
-              </button>
-            </div>
+                <div className="flex gap-3 justify-end">
+                  <button onClick={() => setShowSend(false)} className="btn-secondary">Cancel</button>
+                  <button onClick={handleSend} disabled={sending} className="btn-primary">
+                    {sending ? 'Sending...' : `Send ${category === 'vendor' ? 'Vendor' : 'Buyer'} Forms`}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

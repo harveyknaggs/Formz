@@ -25,6 +25,9 @@ async function start() {
   // Health check
   app.get('/api/health', (req, res) => res.json({ status: 'ok', app: 'FormFlow RE' }));
 
+  // Serve static files from server/public
+  app.use('/public', express.static(path.join(__dirname, 'public')));
+
   // Serve static frontend in production
   const clientDist = path.join(__dirname, '..', 'client', 'dist');
   app.use(express.static(clientDist));

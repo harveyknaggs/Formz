@@ -2,19 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ReactMarkdown from 'react-markdown';
-import MarketAppraisal from '../components/forms/MarketAppraisal';
-import VendorDisclosure from '../components/forms/VendorDisclosure';
-import AgencyAgreement from '../components/forms/AgencyAgreement';
-import PurchaserAcknowledgement from '../components/forms/PurchaserAcknowledgement';
-import SalePurchaseAgreement from '../components/forms/SalePurchaseAgreement';
-
-const FORM_COMPONENTS = {
-  market_appraisal: MarketAppraisal,
-  vendor_disclosure: VendorDisclosure,
-  agency_agreement: AgencyAgreement,
-  purchaser_acknowledgement: PurchaserAcknowledgement,
-  sale_purchase_agreement: SalePurchaseAgreement,
-};
 
 const FORM_LABELS = {
   market_appraisal: 'Market Appraisal',
@@ -22,6 +9,8 @@ const FORM_LABELS = {
   agency_agreement: 'Agency Agreement',
   purchaser_acknowledgement: 'Purchaser Acknowledgement',
   sale_purchase_agreement: 'Sale & Purchase Agreement',
+  vendor_forms: 'Vendor Forms',
+  buyer_forms: 'Buyer Forms',
 };
 
 export default function SubmissionReview() {
@@ -38,7 +27,6 @@ export default function SubmissionReview() {
       setSub(data);
       setNotes(data.agent_notes || '');
       setSummary(data.ai_summary || '');
-      // Auto-generate summary if not present
       if (!data.ai_summary) generateSummary();
     }).catch(console.error);
   }, [id]);
@@ -69,9 +57,23 @@ export default function SubmissionReview() {
 
   if (!sub) return <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
 
-  const FormComponent = FORM_COMPONENTS[sub.form_type];
-  // The form data might be stored under the form_type key or at the top level
-  const displayData = sub.form_data[sub.form_type] || sub.form_data;
+  const formData = sub.form_data || {};
+
+  // Separate signatures from other data
+  const signatures = {};
+  const fields = {};
+  Object.entries(formData).forEach(([key, value]) => {
+    if (key.startsWith('sig_')) {
+      const sigName = key.replace('sig_', '');
+      signatures[sigName] = {
+        image: value,
+        name: formData['name_' + sigName] || '',
+        timestamp: formData['ts_' + sigName] || ''
+      };
+    } else if (!key.startsWith('name_') && !key.startsWith('ts_') && !key.startsWith('_')) {
+      fields[key] = value;
+    }
+  });
 
   return (
     <div>
@@ -79,7 +81,7 @@ export default function SubmissionReview() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{sub.client_name} — {FORM_LABELS[sub.form_type]}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{sub.client_name} — {FORM_LABELS[sub.form_type] || sub.form_type}</h1>
           <p className="text-slate-500">Submitted {new Date(sub.submitted_at).toLocaleString('en-NZ')}</p>
         </div>
         <span className={`badge-${sub.status} text-sm px-3 py-1`}>{sub.status}</span>
@@ -91,12 +93,43 @@ export default function SubmissionReview() {
         <div className="card overflow-auto max-h-[80vh]">
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200">
             <h2 className="text-lg font-semibold text-navy">Completed Form</h2>
-            <button onClick={() => window.print()} className="btn-secondary text-xs py-1">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-              Print
-            </button>
+            <button onClick={() => window.print()} className="btn-secondary text-xs py-1">Print</button>
           </div>
-          {FormComponent && <FormComponent data={displayData} onChange={() => {}} readOnly />}
+
+          {/* Form Fields */}
+          <div className="space-y-4">
+            {Object.entries(fields).map(([key, value]) => (
+              <div key={key} className="border-b border-slate-100 pb-3">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{key}</label>
+                {Array.isArray(value) ? (
+                  <ul className="mt-1 text-sm text-slate-800 list-disc list-inside">
+                    {value.map((item, i) => <li key={i}>{item}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-800">{String(value)}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Signatures */}
+          {Object.keys(signatures).length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-navy mb-3 uppercase tracking-wide">Signatures</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {Object.entries(signatures).map(([name, sig]) => (
+                  <div key={name} className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">{name}</h4>
+                    {sig.image && (
+                      <img src={sig.image} alt={`Signature - ${name}`} className="w-full h-20 object-contain bg-white rounded border border-slate-200 mb-2" />
+                    )}
+                    {sig.name && <p className="text-sm text-slate-700 font-medium">{sig.name}</p>}
+                    {sig.timestamp && <p className="text-xs text-slate-500">{sig.timestamp}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: AI Summary */}

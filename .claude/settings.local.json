@@ -12,7 +12,10 @@
       "Bash(netstat -ano)",
       "Bash(taskkill //F //PID 5816)",
       "Bash(node index.js)",
-      "Bash(taskkill //F //PID 23412)"
+      "Bash(taskkill //F //PID 23412)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"Add debug logging to Gmail OAuth connect route:*)",
+      "Bash(git push:*)"
     ]
   }
 }

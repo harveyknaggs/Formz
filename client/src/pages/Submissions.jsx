@@ -19,7 +19,8 @@ export default function Submissions() {
   const formLabel = (t) => ({
     market_appraisal: 'Market Appraisal', vendor_disclosure: 'Vendor Disclosure',
     agency_agreement: 'Agency Agreement', purchaser_acknowledgement: 'Purchaser Acknowledgement',
-    sale_purchase_agreement: 'Sale & Purchase'
+    sale_purchase_agreement: 'Sale & Purchase', vendor_forms: 'Vendor Forms',
+    buyer_forms: 'Buyer Forms'
   }[t] || t);
 
   return (
@@ -33,6 +34,8 @@ export default function Submissions() {
       <div className="flex flex-wrap gap-3 mb-4">
         <select className="input w-auto" value={filter.form_type} onChange={e => setFilter(f => ({ ...f, form_type: e.target.value }))}>
           <option value="">All Forms</option>
+          <option value="vendor_forms">Vendor Forms</option>
+          <option value="buyer_forms">Buyer Forms</option>
           <option value="market_appraisal">Market Appraisal</option>
           <option value="vendor_disclosure">Vendor Disclosure</option>
           <option value="agency_agreement">Agency Agreement</option>

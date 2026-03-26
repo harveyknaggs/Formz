@@ -11,7 +11,8 @@ export default function FormsSent() {
   const formLabel = (t) => ({
     market_appraisal: 'Market Appraisal', vendor_disclosure: 'Vendor Disclosure',
     agency_agreement: 'Agency Agreement', purchaser_acknowledgement: 'Purchaser Acknowledgement',
-    sale_purchase_agreement: 'Sale & Purchase'
+    sale_purchase_agreement: 'Sale & Purchase', vendor_forms: 'Vendor Forms',
+    buyer_forms: 'Buyer Forms'
   }[t] || t);
 
   return (
