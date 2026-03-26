@@ -35,7 +35,8 @@ router.post('/public/:token', (req, res) => {
   sendConfirmation({
     to: tokenRow.client_email,
     clientName: tokenRow.client_name,
-    formType: tokenRow.form_type
+    formType: tokenRow.form_type,
+    agentId: tokenRow.agent_id
   }).catch(err => console.error('Confirmation email error:', err));
 
   sendSubmissionNotification({
@@ -43,7 +44,8 @@ router.post('/public/:token', (req, res) => {
     agentName: tokenRow.agent_name,
     clientName: tokenRow.client_name,
     formType: tokenRow.form_type,
-    formCategory: tokenRow.form_category
+    formCategory: tokenRow.form_category,
+    agentId: tokenRow.agent_id
   }).catch(err => console.error('Notification email error:', err));
 
   res.json({ message: 'Form submitted successfully', submission_id: result.lastInsertRowid });

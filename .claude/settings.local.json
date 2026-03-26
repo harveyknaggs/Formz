@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(rm -rf node_modules package-lock.json)",
+      "Bash(npm install:*)",
+      "Bash(timeout 5 node server/index.js)",
+      "Bash(npx vite:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"require\\(''dotenv''\\).config\\({path:''.env''}\\);const e=require\\(''express''\\),c=require\\(''cors''\\),p=require\\(''path''\\);\\(async\\(\\)=>{await require\\(''./server/db''\\).init\\(\\);const a=e\\(\\);a.use\\(c\\(\\)\\);a.use\\(e.json\\({limit:''50mb''}\\)\\);a.use\\(''/api/auth'',require\\(''./server/routes/auth''\\)\\);a.use\\(''/api/clients'',require\\(''./server/routes/clients''\\)\\);a.use\\(''/api/forms'',require\\(''./server/routes/forms''\\)\\);a.use\\(''/api/submissions'',require\\(''./server/routes/submissions''\\)\\);a.get\\(''/api/health'',\\(q,r\\)=>r.json\\({status:''ok''}\\)\\);a.listen\\(3001,\\(\\)=>console.log\\(''Server on 3001''\\)\\);setInterval\\(\\(\\)=>{},60000\\)}\\)\\(\\)\")",
+      "Bash(node -e \"require\\(''dotenv''\\).config\\({path:require\\(''path''\\).join\\(__dirname,''..'', ''.env''\\)}\\);const e=require\\(''express''\\),c=require\\(''cors''\\);\\(async\\(\\)=>{await require\\(''./db''\\).init\\(\\);const a=e\\(\\);a.use\\(c\\(\\)\\);a.use\\(e.json\\({limit:''50mb''}\\)\\);a.use\\(''/api/auth'',require\\(''./routes/auth''\\)\\);a.use\\(''/api/clients'',require\\(''./routes/clients''\\)\\);a.use\\(''/api/forms'',require\\(''./routes/forms''\\)\\);a.use\\(''/api/submissions'',require\\(''./routes/submissions''\\)\\);a.get\\(''/api/health'',\\(q,r\\)=>r.json\\({status:''ok''}\\)\\);a.listen\\(3001,\\(\\)=>console.log\\(''Server on 3001''\\)\\);setInterval\\(\\(\\)=>{},60000\\)}\\)\\(\\)\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 5816)",
+      "Bash(node index.js)",
+      "Bash(taskkill //F //PID 23412)"
+    ]
+  }
+}

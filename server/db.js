@@ -85,6 +85,8 @@ async function init() {
       password TEXT NOT NULL,
       name TEXT NOT NULL,
       phone TEXT,
+      gmail_tokens TEXT,
+      gmail_email TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -130,6 +132,11 @@ async function init() {
       FOREIGN KEY (agent_id) REFERENCES agents(id)
     );
   `);
+
+  // Migrate: add gmail columns if missing
+  try { database.exec('ALTER TABLE agents ADD COLUMN gmail_tokens TEXT'); } catch {}
+  try { database.exec('ALTER TABLE agents ADD COLUMN gmail_email TEXT'); } catch {}
+
   save();
 
   // Seed default agent if none exists

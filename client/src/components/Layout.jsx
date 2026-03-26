@@ -32,7 +32,7 @@ export default function Layout() {
 
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-navy text-white flex flex-col transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-white/10">
-          <img src="/formz-logo.svg" alt="Formz" className="h-10 brightness-0 invert" />
+          <img src="/formz-logo.svg" alt="Formz" className="h-14 brightness-0 invert" />
         </div>
 
         <nav className="flex-1 p-4 space-y-1">

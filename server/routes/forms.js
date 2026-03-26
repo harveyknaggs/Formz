@@ -42,7 +42,8 @@ router.post('/send', authenticate, (req, res) => {
       agentName: req.agent.name,
       formType: t.formType,
       formCategory: t.form_category,
-      link: `${appUrl}/form/${t.token}`
+      link: `${appUrl}/form/${t.token}`,
+      agentId: req.agent.id
     }).catch(err => console.error('Email send error:', err));
   }
 

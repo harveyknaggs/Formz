@@ -20,6 +20,7 @@ async function start() {
   app.use('/api/clients', require('./routes/clients'));
   app.use('/api/forms', require('./routes/forms'));
   app.use('/api/submissions', require('./routes/submissions'));
+  app.use('/api/gmail', require('./routes/gmail'));
 
   // Health check
   app.get('/api/health', (req, res) => res.json({ status: 'ok', app: 'FormFlow RE' }));
