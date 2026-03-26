@@ -34,7 +34,8 @@ router.post('/send', authenticate, (req, res) => {
   const formType = form_category === 'vendor' ? 'vendor_forms' : 'buyer_forms';
   db.prepare('INSERT INTO form_tokens (token, client_id, agent_id, form_type, form_category, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(token, client_id, req.agent.id, formType, form_category, expiresAt);
 
-  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+  const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  console.log('[Forms] APP_URL env:', process.env.APP_URL, '| Using:', appUrl);
   const link = `${appUrl}/form/${token}`;
 
   sendFormLink({

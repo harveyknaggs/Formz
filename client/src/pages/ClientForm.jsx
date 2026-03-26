@@ -21,6 +21,13 @@ export default function ClientForm() {
       });
   }, [token]);
 
+  // Once we have valid form info, redirect to the server-rendered HTML form page
+  useEffect(() => {
+    if (formInfo && !error) {
+      window.location.href = `/api/forms/html/${token}`;
+    }
+  }, [formInfo, error, token]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -48,16 +55,13 @@ export default function ClientForm() {
     );
   }
 
-  // Redirect to the server-rendered HTML form
-  // The server injects submission logic into the raw HTML
+  // Show loading while redirecting to the HTML form
   return (
-    <div className="min-h-screen bg-slate-50">
-      <iframe
-        src={`/api/forms/html/${token}`}
-        className="w-full min-h-screen border-0"
-        style={{ height: '100vh', width: '100%', border: 'none' }}
-        title={`${formInfo.form_category} Forms`}
-      />
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#0099cc] mx-auto mb-4" />
+        <p className="text-slate-500">Opening form...</p>
+      </div>
     </div>
   );
 }
