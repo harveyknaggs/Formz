@@ -40,6 +40,7 @@ export default function ClientForm() {
   }
 
   if (error) {
+    const isExpired = /expired/i.test(error);
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="bg-white rounded-xl shadow-lg max-w-md w-full text-center p-8">
@@ -48,8 +49,13 @@ export default function ClientForm() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-slate-900 mb-2">Form Unavailable</h1>
+          <h1 className="text-xl font-bold text-slate-900 mb-2">
+            {isExpired ? 'This link has expired' : 'Form Unavailable'}
+          </h1>
           <p className="text-slate-600">{error}</p>
+          <p className="text-sm text-slate-500 mt-3">
+            Please contact your agent to request a new form link.
+          </p>
         </div>
       </div>
     );

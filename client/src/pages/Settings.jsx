@@ -8,7 +8,7 @@ export default function Settings() {
   const [form, setForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
-  const [gmail, setGmail] = useState({ connected: false, email: null, loading: true });
+  const [gmail, setGmail] = useState({ connected: false, email: null, needs_reconnect: false, loading: true });
 
   useEffect(() => {
     if (agent) setForm(f => ({ ...f, name: agent.name || '', phone: agent.phone || '' }));
@@ -20,7 +20,7 @@ export default function Settings() {
     const gmailParam = searchParams.get('gmail');
     if (gmailParam === 'connected') {
       const email = searchParams.get('email');
-      setGmail({ connected: true, email, loading: false });
+      setGmail({ connected: true, email, needs_reconnect: false, loading: false });
       setMsg(`Gmail connected: ${email}`);
     } else if (gmailParam === 'error') {
       setMsg(`Error connecting Gmail: ${searchParams.get('reason') || 'Unknown error'}`);
@@ -31,14 +31,15 @@ export default function Settings() {
     e.preventDefault();
     setSaving(true);
     setMsg('');
+    const changingPassword = Boolean(form.newPassword);
     try {
       const body = { name: form.name, phone: form.phone };
-      if (form.newPassword) {
+      if (changingPassword) {
         body.currentPassword = form.currentPassword;
         body.newPassword = form.newPassword;
       }
       await api('/api/auth/me', { method: 'PUT', body: JSON.stringify(body) });
-      setMsg('Settings saved successfully.');
+      setMsg(changingPassword ? 'Password updated successfully.' : 'Settings saved successfully.');
       setForm(f => ({ ...f, currentPassword: '', newPassword: '' }));
     } catch (err) {
       setMsg(`Error: ${err.message}`);
@@ -59,7 +60,7 @@ export default function Settings() {
   const disconnectGmail = async () => {
     try {
       await api('/api/gmail/disconnect', { method: 'POST' });
-      setGmail({ connected: false, email: null, loading: false });
+      setGmail({ connected: false, email: null, needs_reconnect: false, loading: false });
       setMsg('Gmail disconnected.');
     } catch (err) {
       setMsg(`Error: ${err.message}`);
@@ -75,6 +76,19 @@ export default function Settings() {
 
       <div className="space-y-6 max-w-lg">
         {msg && <div className={`p-3 rounded-lg text-sm ${msg.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{msg}</div>}
+
+        {gmail.needs_reconnect && !gmail.loading && (
+          <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/></svg>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">Your Gmail connection expired</p>
+              <p className="text-xs text-amber-800 mt-1 mb-3">Please reconnect so your clients receive emails from your address.</p>
+              <button onClick={connectGmail} className="text-sm font-medium text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-md transition">
+                Reconnect Gmail
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Gmail Integration */}
         <div className="card">

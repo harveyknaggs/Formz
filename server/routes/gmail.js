@@ -72,9 +72,12 @@ router.get('/callback', async (req, res) => {
 router.get('/status', authenticate, (req, res) => {
   const db = getDb();
   const agent = db.prepare('SELECT gmail_email, gmail_tokens FROM agents WHERE id = ?').get(req.agent.id);
+  const hasEmail = !!agent?.gmail_email;
+  const hasTokens = !!agent?.gmail_tokens;
   res.json({
-    connected: !!agent?.gmail_tokens,
-    email: agent?.gmail_email || null
+    connected: hasTokens,
+    email: agent?.gmail_email || null,
+    needs_reconnect: hasEmail && !hasTokens
   });
 });
 

@@ -110,8 +110,12 @@ router.delete('/admin/agents/:id', authenticate, (req, res) => {
   const agentId = parseInt(req.params.id);
   if (agentId === req.agent.id) return res.status(400).json({ error: 'Cannot delete your own account' });
 
+  db.prepare('DELETE FROM e_signatures WHERE submission_id IN (SELECT id FROM submissions WHERE agent_id = ?)').run(agentId);
+  db.prepare('DELETE FROM submissions WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM form_tokens WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM clients WHERE agent_id = ?').run(agentId);
   db.prepare('DELETE FROM agents WHERE id = ?').run(agentId);
-  res.json({ message: 'Agent deleted' });
+  res.json({ message: 'Agent and all their data deleted' });
 });
 
 // Admin: Toggle admin status
@@ -121,6 +125,7 @@ router.put('/admin/agents/:id/toggle-admin', authenticate, (req, res) => {
   if (!requestor?.is_admin) return res.status(403).json({ error: 'Admin access required' });
 
   const agentId = parseInt(req.params.id);
+  if (agentId === req.agent.id) return res.status(400).json({ error: 'You cannot change your own admin status' });
   const target = db.prepare('SELECT is_admin FROM agents WHERE id = ?').get(agentId);
   if (!target) return res.status(404).json({ error: 'Agent not found' });
 

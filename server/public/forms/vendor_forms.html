@@ -66,11 +66,32 @@ hr { border: none; border-top: 1px solid #eee; margin: 24px 0; }
 .checkbox-list label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; font-weight: 400; color: #333; text-transform: none; letter-spacing: 0; white-space: nowrap; }
 .checkbox-list input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; accent-color: #0099cc; }
 @media (max-width: 640px) {
-  .page { padding: 24px 20px; margin: 16px 12px; }
+  .page { padding: 20px 16px; margin: 16px 10px; }
+  .form-header { flex-direction: column; gap: 12px; }
+  .brand { text-align: left; }
   .field-row, .field-row-3, .sig-grid { grid-template-columns: 1fr; }
   .tabs { padding: 0 12px; }
   .tab { padding: 12px 14px; font-size: 12px; }
+  .top-bar { padding: 12px 16px; }
+  .btn-submit, .btn-print { width: 100%; margin: 6px 0; padding: 13px 20px; }
   .checkbox-list { grid-template-columns: 1fr; }
+  .sig-canvas-wrap canvas, canvas { max-width: 100%; }
+}
+@media (max-width: 400px) {
+  .page { padding: 16px 12px; margin: 12px 6px; border-radius: 6px; }
+  .form-title h1 { font-size: 20px; }
+  .form-header { margin-bottom: 20px; padding-bottom: 14px; }
+  .tabs { padding: 0 8px; gap: 2px; flex-wrap: wrap; }
+  .tab { padding: 10px 10px; font-size: 11px; }
+  .top-bar { padding: 10px 12px; gap: 10px; }
+  .logo { font-size: 18px; }
+  .top-title { font-size: 11px; }
+  .section-label { font-size: 11px; }
+  .field-group input, .field-group textarea, .field-group select { font-size: 13px; padding: 8px 10px; }
+  .radio-group { gap: 12px; }
+  .info-box { padding: 10px 12px; font-size: 12px; }
+  .checkbox-list label { white-space: normal; font-size: 13px; }
+  .brand-name { font-size: 16px; }
 }
 @media print {
   .top-bar, .tabs, .form-actions, .btn-clear { display: none; }

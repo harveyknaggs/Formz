@@ -5,6 +5,7 @@ export default function Admin() {
   const { api, agent } = useAuth();
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   const load = () => {
     api('/api/auth/admin/agents')
@@ -47,11 +48,31 @@ export default function Admin() {
 
   if (loading) return <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
 
+  const term = search.trim().toLowerCase();
+  const filteredAgents = term
+    ? agents.filter(a =>
+        (a.name || '').toLowerCase().includes(term) ||
+        (a.email || '').toLowerCase().includes(term)
+      )
+    : agents;
+
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Admin Panel</h1>
-        <p className="text-slate-500 mt-1">{agents.length} registered user{agents.length !== 1 ? 's' : ''}</p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Admin Panel</h1>
+          <p className="text-slate-500 mt-1">{agents.length} registered user{agents.length !== 1 ? 's' : ''}</p>
+        </div>
+        {agents.length > 0 && (
+          <input
+            type="search"
+            aria-label="Search users by name or email"
+            className="input w-full sm:w-72"
+            placeholder="Search by name or email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        )}
       </div>
 
       {/* Stats */}
@@ -88,7 +109,13 @@ export default function Admin() {
               </tr>
             </thead>
             <tbody>
-              {agents.map(a => (
+              {filteredAgents.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                    No matches for "{search}".
+                  </td>
+                </tr>
+              ) : filteredAgents.map(a => (
                 <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="py-3 px-3">
                     <div>

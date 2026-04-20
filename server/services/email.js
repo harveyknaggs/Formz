@@ -50,62 +50,120 @@ async function sendViaMake(payload) {
   }
 }
 
+function isAuthError(err) {
+  if (!err) return false;
+  const code = err.code || err.response?.status;
+  if (code === 401 || code === 403) return true;
+  const msg = (err.message || '').toLowerCase();
+  return msg.includes('invalid_grant') || msg.includes('invalid credentials') || msg.includes('token expired') || msg.includes('unauthorized');
+}
+
+function buildRawMessage({ fromEmail, to, subject, text, html }) {
+  const boundary = 'boundary_' + Date.now();
+  const messageParts = [
+    `From: ${fromEmail}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    '',
+    text || '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    html || text || '',
+    `--${boundary}--`
+  ];
+  return Buffer.from(messageParts.join('\r\n')).toString('base64url');
+}
+
 async function sendViaGmailAPI(agentId, { to, subject, text, html }) {
   const db = getDb();
   const agent = db.prepare('SELECT gmail_tokens, gmail_email FROM agents WHERE id = ?').get(agentId);
   if (!agent?.gmail_tokens) return false;
 
+  let tokens;
   try {
-    const tokens = JSON.parse(agent.gmail_tokens);
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_URL || 'http://localhost:3001'}/api/gmail/callback`
-    );
-    oauth2Client.setCredentials(tokens);
+    tokens = JSON.parse(agent.gmail_tokens);
+  } catch (err) {
+    console.error('Gmail tokens malformed for agent', agentId, '- clearing and requiring reconnect.');
+    db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+    return false;
+  }
 
-    // Refresh token if needed
-    if (tokens.expiry_date && tokens.expiry_date < Date.now()) {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_URL || 'http://localhost:3001'}/api/gmail/callback`
+  );
+  oauth2Client.setCredentials(tokens);
+
+  const fromEmail = agent.gmail_email;
+  const encodedMessage = buildRawMessage({ fromEmail, to, subject, text, html });
+
+  // Proactive refresh if we know the token is expired
+  if (tokens.expiry_date && tokens.expiry_date < Date.now() && tokens.refresh_token) {
+    try {
       const { credentials } = await oauth2Client.refreshAccessToken();
-      oauth2Client.setCredentials(credentials);
-      db.prepare('UPDATE agents SET gmail_tokens = ? WHERE id = ?').run(JSON.stringify(credentials), agentId);
+      const merged = { ...tokens, ...credentials, refresh_token: credentials.refresh_token || tokens.refresh_token };
+      oauth2Client.setCredentials(merged);
+      db.prepare('UPDATE agents SET gmail_tokens = ? WHERE id = ?').run(JSON.stringify(merged), agentId);
+    } catch (err) {
+      console.error('Gmail proactive refresh failed for agent', agentId, '-', err.message);
+      db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+      return false;
     }
+  }
 
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const fromEmail = agent.gmail_email;
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Build RFC 2822 email
-    const boundary = 'boundary_' + Date.now();
-    const messageParts = [
-      `From: ${fromEmail}`,
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      `MIME-Version: 1.0`,
-      `Content-Type: multipart/alternative; boundary="${boundary}"`,
-      '',
-      `--${boundary}`,
-      'Content-Type: text/plain; charset=UTF-8',
-      '',
-      text || '',
-      `--${boundary}`,
-      'Content-Type: text/html; charset=UTF-8',
-      '',
-      html || text || '',
-      `--${boundary}--`
-    ];
-    const rawMessage = messageParts.join('\r\n');
-    const encodedMessage = Buffer.from(rawMessage).toString('base64url');
+  const attemptSend = () => gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw: encodedMessage }
+  });
 
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage }
-    });
-
+  try {
+    await attemptSend();
     console.log(`📧 Email sent via Gmail API (${fromEmail}) to ${to}`);
     return true;
   } catch (err) {
-    console.error('Gmail API send error:', err.message);
-    return false;
+    if (!isAuthError(err)) {
+      console.error('Gmail API send error:', err.message);
+      return false;
+    }
+
+    // Auth error on send — try a reactive refresh + retry once
+    if (!tokens.refresh_token) {
+      console.error('Gmail auth error and no refresh_token available for agent', agentId);
+      db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+      return false;
+    }
+
+    try {
+      const { credentials } = await oauth2Client.refreshAccessToken();
+      const merged = { ...tokens, ...credentials, refresh_token: credentials.refresh_token || tokens.refresh_token };
+      oauth2Client.setCredentials(merged);
+      db.prepare('UPDATE agents SET gmail_tokens = ? WHERE id = ?').run(JSON.stringify(merged), agentId);
+    } catch (refreshErr) {
+      console.error('Gmail refresh failed for agent', agentId, '-', refreshErr.message);
+      db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+      return false;
+    }
+
+    try {
+      await attemptSend();
+      console.log(`📧 Email sent via Gmail API after refresh (${fromEmail}) to ${to}`);
+      return true;
+    } catch (retryErr) {
+      console.error('Gmail API send error after refresh:', retryErr.message);
+      if (isAuthError(retryErr)) {
+        db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+      }
+      return false;
+    }
   }
 }
 

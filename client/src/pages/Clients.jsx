@@ -8,9 +8,18 @@ export default function Clients() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
   const [sending, setSending] = useState(false);
+  const [search, setSearch] = useState('');
 
   const load = () => api('/api/clients').then(setClients).catch(console.error);
   useEffect(() => { load(); }, []);
+
+  const term = search.trim().toLowerCase();
+  const filteredClients = term
+    ? clients.filter(c =>
+        (c.name || '').toLowerCase().includes(term) ||
+        (c.email || '').toLowerCase().includes(term)
+      )
+    : clients;
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -64,10 +73,26 @@ export default function Clients() {
         </div>
       )}
 
+      {/* Search */}
+      {clients.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <input
+            type="search"
+            aria-label="Search clients"
+            className="input w-full sm:w-72"
+            placeholder="Search by name or email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+      )}
+
       {/* Clients Table */}
       <div className="card">
         {clients.length === 0 ? (
           <p className="text-slate-400 text-center py-8">No clients yet. Add your first client to get started.</p>
+        ) : filteredClients.length === 0 ? (
+          <p className="text-slate-400 text-center py-8">No matches for "{search}".</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -82,7 +107,7 @@ export default function Clients() {
                 </tr>
               </thead>
               <tbody>
-                {clients.map(c => (
+                {filteredClients.map(c => (
                   <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer">
                     <td className="py-3 px-2">
                       <Link to={`/clients/${c.id}`} className="font-medium text-navy hover:underline">{c.name}</Link>

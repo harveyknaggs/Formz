@@ -10,7 +10,7 @@ const router = express.Router();
 
 const FORM_TYPES = {
   vendor: ['market_appraisal', 'vendor_disclosure', 'agency_agreement'],
-  buyer: ['purchaser_acknowledgement', 'sale_purchase_agreement']
+  buyer: ['purchaser_acknowledgement']
 };
 
 // Send forms — now sends a single link per category (buyer or vendor)

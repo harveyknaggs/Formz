@@ -7,6 +7,7 @@ export default function FormsSent() {
   const [forms, setForms] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState({});
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     api('/api/forms/sent').then(setForms).catch(console.error).finally(() => setLoading(false));
@@ -23,9 +24,17 @@ export default function FormsSent() {
     setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const term = search.trim().toLowerCase();
+  const filteredForms = term
+    ? forms.filter(f =>
+        (f.client_name || '').toLowerCase().includes(term) ||
+        (f.client_email || '').toLowerCase().includes(term)
+      )
+    : forms;
+
   // Group by client + category + sent date
   const grouped = {};
-  forms.forEach(f => {
+  filteredForms.forEach(f => {
     const date = new Date(f.created_at).toLocaleDateString('en-NZ');
     const key = `${f.client_name}-${f.form_category}-${date}`;
     if (!grouped[key]) {
@@ -50,6 +59,20 @@ export default function FormsSent() {
         <p className="text-slate-500 mt-1">{forms.length} form{forms.length !== 1 ? 's' : ''} sent across {groups.length} group{groups.length !== 1 ? 's' : ''}</p>
       </div>
 
+      {/* Search */}
+      {!loading && forms.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <input
+            type="search"
+            aria-label="Search forms sent by client name"
+            className="input w-full sm:w-72"
+            placeholder="Search by client name..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+      )}
+
       <div className="space-y-3">
         {loading ? (
           [0, 1, 2].map(i => (
@@ -72,7 +95,9 @@ export default function FormsSent() {
           ))
         ) : groups.length === 0 ? (
           <div className="card">
-            <p className="text-slate-400 text-center py-8">No forms sent yet.</p>
+            <p className="text-slate-400 text-center py-8">
+              {term ? `No matches for "${search}".` : 'No forms sent yet.'}
+            </p>
           </div>
         ) : (
           groups.map(([key, group]) => {

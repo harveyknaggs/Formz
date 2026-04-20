@@ -7,6 +7,7 @@ export default function Submissions() {
   const [subs, setSubs] = useState([]);
   const [filter, setFilter] = useState({ form_type: '', status: '' });
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [search, setSearch] = useState('');
 
   const load = () => {
     const params = new URLSearchParams();
@@ -28,9 +29,17 @@ export default function Submissions() {
     setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const term = search.trim().toLowerCase();
+  const filteredSubs = term
+    ? subs.filter(s =>
+        (s.client_name || '').toLowerCase().includes(term) ||
+        (s.client_email || '').toLowerCase().includes(term)
+      )
+    : subs;
+
   // Group submissions by client + form_category + date (same day)
   const grouped = {};
-  subs.forEach(s => {
+  filteredSubs.forEach(s => {
     const date = new Date(s.submitted_at).toLocaleDateString('en-NZ');
     const key = `${s.client_name}-${s.form_category}-${date}`;
     if (!grouped[key]) {
@@ -73,12 +82,22 @@ export default function Submissions() {
           <option value="submitted">Submitted</option>
           <option value="reviewed">Reviewed</option>
         </select>
+        <input
+          type="search"
+          aria-label="Search submissions by client"
+          className="input w-full sm:w-64 sm:ml-auto"
+          placeholder="Search by name or email..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
       </div>
 
       <div className="space-y-3">
         {groups.length === 0 ? (
           <div className="card">
-            <p className="text-slate-400 text-center py-8">No submissions found.</p>
+            <p className="text-slate-400 text-center py-8">
+              {term ? `No matches for "${search}".` : 'No submissions found.'}
+            </p>
           </div>
         ) : (
           groups.map(([key, group]) => {
