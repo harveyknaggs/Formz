@@ -1,10 +1,20 @@
 const express = require('express');
+const crypto = require('crypto');
 const { getDb } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { generateSummary } = require('../services/ai');
 const { sendSubmissionNotification, sendConfirmation } = require('../services/email');
 
 const router = express.Router();
+
+function deriveSignerRole(label) {
+  if (!label) return null;
+  const lower = String(label).toLowerCase();
+  if (lower.includes('vendor')) return 'vendor';
+  if (lower.includes('buyer') || lower.includes('purchaser')) return 'buyer';
+  if (lower.includes('agent')) return 'agent';
+  return label;
+}
 
 // Public: Submit a form
 router.post('/public/:token', (req, res) => {
@@ -25,10 +35,43 @@ router.post('/public/:token', (req, res) => {
   const { formData } = req.body;
   if (!formData) return res.status(400).json({ error: 'Form data is required' });
 
+  const serializedFormData = JSON.stringify(formData);
   const result = db.prepare(`
     INSERT INTO submissions (token_id, client_id, agent_id, form_type, form_category, form_data)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(tokenRow.id, tokenRow.client_id, tokenRow.agent_id, tokenRow.form_type, tokenRow.form_category, JSON.stringify(formData));
+  `).run(tokenRow.id, tokenRow.client_id, tokenRow.agent_id, tokenRow.form_type, tokenRow.form_category, serializedFormData);
+
+  // E-signature audit trail (NZ ETA 2002) — capture IP, UA, and a SHA-256 hash of the
+  // serialized form payload alongside every signature image in this submission.
+  try {
+    const submissionId = result.lastInsertRowid;
+    const dataHash = crypto.createHash('sha256').update(serializedFormData).digest('hex');
+    const signerIp = req.ip || null;
+    const signerUa = req.get('User-Agent') || null;
+
+    const insertSig = db.prepare(`
+      INSERT INTO e_signatures (
+        submission_id, signer_name, signer_role, signer_ip, signer_ua,
+        data_hash, signature_png, client_timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const key of Object.keys(formData)) {
+      if (!key.startsWith('sig_')) continue;
+      const label = key.slice(4);
+      const signaturePng = formData[key];
+      if (!signaturePng) continue;
+      const signerName = formData['name_' + label] || null;
+      const clientTimestamp = formData['ts_' + label] || null;
+      const signerRole = deriveSignerRole(label);
+      insertSig.run(
+        submissionId, signerName, signerRole, signerIp, signerUa,
+        dataHash, signaturePng, clientTimestamp
+      );
+    }
+  } catch (err) {
+    console.error('E-signature audit capture error:', err);
+  }
 
   db.prepare("UPDATE form_tokens SET status = 'submitted' WHERE id = ?").run(tokenRow.id);
 
@@ -95,6 +138,8 @@ router.get('/:id', authenticate, (req, res) => {
 
   if (!submission) return res.status(404).json({ error: 'Submission not found' });
   submission.form_data = JSON.parse(submission.form_data);
+  const signatures = db.prepare('SELECT * FROM e_signatures WHERE submission_id = ? ORDER BY signed_at').all(submission.id);
+  submission.signatures = signatures;
   res.json(submission);
 });
 

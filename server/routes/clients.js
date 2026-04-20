@@ -1,6 +1,7 @@
 const express = require('express');
 const { getDb } = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { isValidEmail } = require('../utils/validators');
 
 const router = express.Router();
 
@@ -37,6 +38,7 @@ router.post('/', authenticate, (req, res) => {
   const db = getDb();
   const { name, email, phone } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+  if (!isValidEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
 
   const result = db.prepare('INSERT INTO clients (agent_id, name, email, phone) VALUES (?, ?, ?, ?)').run(req.agent.id, name, email, phone || null);
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
@@ -48,6 +50,9 @@ router.put('/:id', authenticate, (req, res) => {
   const { name, email, phone } = req.body;
   const existing = db.prepare('SELECT * FROM clients WHERE id = ? AND agent_id = ?').get(parseInt(req.params.id), req.agent.id);
   if (!existing) return res.status(404).json({ error: 'Client not found' });
+  if (email !== undefined && !isValidEmail(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address' });
+  }
 
   db.prepare('UPDATE clients SET name = ?, email = ?, phone = ? WHERE id = ?').run(
     name || existing.name, email || existing.email, phone ?? existing.phone, parseInt(req.params.id)

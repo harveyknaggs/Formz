@@ -6,10 +6,13 @@ export default function Dashboard() {
   const { api, agent } = useAuth();
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api('/api/submissions/stats/overview').then(setStats).catch(console.error);
-    api('/api/submissions?limit=5').then(data => setRecent(data.slice(0, 5))).catch(console.error);
+    Promise.allSettled([
+      api('/api/submissions/stats/overview').then(setStats),
+      api('/api/submissions?limit=5').then(data => setRecent(data.slice(0, 5)))
+    ]).finally(() => setLoading(false));
   }, []);
 
   const formLabel = (t) => ({
@@ -36,7 +39,11 @@ export default function Dashboard() {
           <div key={i} className="card flex items-center gap-4">
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${s.color}`}>{s.icon}</div>
             <div>
-              <p className="text-2xl font-bold text-slate-900">{s.value}</p>
+              {loading ? (
+                <div className="animate-pulse bg-slate-200 h-8 w-16 rounded mb-1" />
+              ) : (
+                <p className="text-2xl font-bold text-slate-900">{s.value}</p>
+              )}
               <p className="text-sm text-slate-500">{s.label}</p>
             </div>
           </div>
@@ -49,7 +56,18 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-slate-900">Recent Submissions</h2>
           <Link to="/submissions" className="text-sm text-primary hover:underline">View all</Link>
         </div>
-        {recent.length === 0 ? (
+        {loading ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="flex items-center gap-4 py-2">
+                <div className="animate-pulse bg-slate-200 h-4 w-32 rounded" />
+                <div className="animate-pulse bg-slate-200 h-4 w-28 rounded" />
+                <div className="animate-pulse bg-slate-200 h-4 w-20 rounded" />
+                <div className="animate-pulse bg-slate-200 h-4 w-24 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : recent.length === 0 ? (
           <p className="text-slate-400 text-sm py-8 text-center">No submissions yet. Send forms to clients to get started.</p>
         ) : (
           <div className="overflow-x-auto">

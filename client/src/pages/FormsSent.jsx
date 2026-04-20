@@ -6,8 +6,11 @@ export default function FormsSent() {
   const { api } = useAuth();
   const [forms, setForms] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { api('/api/forms/sent').then(setForms).catch(console.error); }, []);
+  useEffect(() => {
+    api('/api/forms/sent').then(setForms).catch(console.error).finally(() => setLoading(false));
+  }, []);
 
   const formLabel = (t) => ({
     market_appraisal: 'Market Appraisal', vendor_disclosure: 'Vendor Disclosure',
@@ -48,7 +51,26 @@ export default function FormsSent() {
       </div>
 
       <div className="space-y-3">
-        {groups.length === 0 ? (
+        {loading ? (
+          [0, 1, 2].map(i => (
+            <div key={i} className="card">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="animate-pulse bg-slate-200 w-4 h-4 rounded" />
+                  <div className="animate-pulse bg-slate-200 w-10 h-10 rounded-full" />
+                  <div className="space-y-2">
+                    <div className="animate-pulse bg-slate-200 h-4 w-40 rounded" />
+                    <div className="animate-pulse bg-slate-200 h-3 w-56 rounded" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="animate-pulse bg-slate-200 h-3 w-24 rounded" />
+                  <div className="animate-pulse bg-slate-200 h-6 w-20 rounded-full" />
+                </div>
+              </div>
+            </div>
+          ))
+        ) : groups.length === 0 ? (
           <div className="card">
             <p className="text-slate-400 text-center py-8">No forms sent yet.</p>
           </div>

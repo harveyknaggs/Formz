@@ -142,26 +142,28 @@ const FORM_LABELS = {
 async function sendFormLink({ to, clientName, agentName, formType, formCategory, link, agentId }) {
   const formLabel = FORM_LABELS[formType] || formType;
   const categoryLabel = formCategory === 'vendor' ? 'Vendor' : 'Buyer';
+  const agent = agentId ? getDb().prepare('SELECT company FROM agents WHERE id = ?').get(agentId) : null;
+  const brand = process.env.APP_NAME || agent?.company || 'Formz';
 
   await sendEmail(agentId, {
     to,
     subject: `${formLabel} - Action Required | Formz`,
-    text: `Hi ${clientName},\n\n${agentName} from Hometown Real Estate has sent you a ${formLabel} form to complete.\n\nPlease click the link below:\n${link}\n\nThis link will expire in 30 days.\n\nKind regards,\nHometown Real Estate`,
+    text: `Hi ${clientName},\n\n${agentName} from ${brand} has sent you a ${formLabel} form to complete.\n\nPlease click the link below:\n${link}\n\nThis link will expire in 30 days.\n\nKind regards,\n${brand}`,
     html: `
       <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <h1 style="color: #1e3a5f; font-size: 24px; margin: 0;">Formz</h1>
-          <p style="color: #3b82f6; font-size: 14px; margin: 4px 0 0;">Hometown Real Estate</p>
+          <p style="color: #3b82f6; font-size: 14px; margin: 4px 0 0;">${brand}</p>
         </div>
         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px;">
           <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">Hi ${clientName},</p>
-          <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">${agentName} from Hometown Real Estate has sent you a <strong>${categoryLabel} - ${formLabel}</strong> form to complete.</p>
+          <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">${agentName} from ${brand} has sent you a <strong>${categoryLabel} - ${formLabel}</strong> form to complete.</p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${link}" style="background: #3b82f6; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; display: inline-block;">Open & Complete Form</a>
           </div>
           <p style="color: #64748b; font-size: 14px; margin: 0;">This link will expire in 30 days.</p>
         </div>
-        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 24px;">Formz — Hometown Real Estate</p>
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 24px;">Formz — ${brand}</p>
       </div>
     `,
     type: 'form_link'
@@ -190,11 +192,13 @@ async function sendSubmissionNotification({ to, agentName, clientName, formType,
 
 async function sendConfirmation({ to, clientName, formType, agentId }) {
   const formLabel = FORM_LABELS[formType] || formType;
+  const agent = agentId ? getDb().prepare('SELECT company FROM agents WHERE id = ?').get(agentId) : null;
+  const brand = process.env.APP_NAME || agent?.company || 'Formz';
 
   await sendEmail(agentId, {
     to,
-    subject: `Form Received: ${formLabel} | Hometown Real Estate`,
-    text: `Hi ${clientName},\n\nThank you for submitting the ${formLabel} form.\n\nYour agent will review it and be in touch shortly.\n\nKind regards,\nHometown Real Estate`,
+    subject: `Form Received: ${formLabel} | ${brand}`,
+    text: `Hi ${clientName},\n\nThank you for submitting the ${formLabel} form.\n\nYour agent will review it and be in touch shortly.\n\nKind regards,\n${brand}`,
     type: 'confirmation'
   });
 }

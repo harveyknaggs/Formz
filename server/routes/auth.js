@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { getDb } = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { isValidEmail } = require('../utils/validators');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'formflow-re-default-jwt-secret-change-me';
 const router = express.Router();
@@ -33,6 +34,9 @@ router.post('/signup', (req, res) => {
   const { email, password, name, phone, company } = req.body;
   if (!email || !password || !name) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
+  }
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address' });
   }
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });

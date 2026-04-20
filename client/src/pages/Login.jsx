@@ -102,7 +102,7 @@ export default function Login() {
             <form onSubmit={handleSignup} className="space-y-4">
               <div>
                 <label className="label">Full Name</label>
-                <input type="text" className="input" value={name} onChange={e => setName(e.target.value)} placeholder="John Mitchell" required />
+                <input type="text" className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" required />
               </div>
               <div>
                 <label className="label">Email</label>

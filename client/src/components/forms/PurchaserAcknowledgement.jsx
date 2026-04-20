@@ -42,7 +42,7 @@ export default function PurchaserAcknowledgement({ data, onChange, readOnly }) {
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-xl font-bold text-navy">Purchaser Acknowledgement</h2>
-        <p className="text-sm text-slate-500">Buyer acknowledgement form for Hometown Real Estate (@realty)</p>
+        <p className="text-sm text-slate-500">Buyer acknowledgement form</p>
       </div>
 
       {/* Property & Purchaser */}

@@ -27,7 +27,7 @@ export default function MarketAppraisal({ data, onChange, readOnly }) {
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-xl font-bold text-navy">Market Appraisal</h2>
-        <p className="text-sm text-slate-500">Property valuation assessment for Hometown Real Estate</p>
+        <p className="text-sm text-slate-500">Property valuation assessment</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -59,7 +59,7 @@ export default function AgencyAgreement({ data, onChange, readOnly }) {
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-xl font-bold text-navy">Agency Agreement</h2>
-        <p className="text-sm text-slate-500">Listing agreement between vendor and Hometown Real Estate (@realty)</p>
+        <p className="text-sm text-slate-500">Listing agreement between vendor and agent</p>
       </div>
 
       {/* Property Details */}

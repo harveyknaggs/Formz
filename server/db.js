@@ -131,6 +131,20 @@ async function init() {
       FOREIGN KEY (client_id) REFERENCES clients(id),
       FOREIGN KEY (agent_id) REFERENCES agents(id)
     );
+
+    CREATE TABLE IF NOT EXISTS e_signatures (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_id INTEGER NOT NULL,
+      signer_name TEXT,
+      signer_role TEXT,
+      signer_ip TEXT,
+      signer_ua TEXT,
+      data_hash TEXT NOT NULL,
+      signature_png TEXT NOT NULL,
+      client_timestamp TEXT,
+      signed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (submission_id) REFERENCES submissions(id)
+    );
   `);
 
   // Migrate: add columns if missing

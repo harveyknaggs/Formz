@@ -130,6 +130,73 @@ export default function SubmissionReview() {
               </div>
             </div>
           )}
+
+          {/* E-signature audit trail (NZ ETA 2002) */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-navy mb-1 uppercase tracking-wide">E-signature Audit Trail</h3>
+            <p className="text-xs text-slate-500 mb-3">NZ Electronic Transactions Act 2002 — identity, intent, and integrity evidence for each signer.</p>
+            {Array.isArray(sub.signatures) && sub.signatures.length > 0 ? (
+              <div className="space-y-3">
+                {sub.signatures.map(s => {
+                  const ua = s.signer_ua || '';
+                  const uaShort = ua.length > 60 ? ua.slice(0, 60) + '…' : ua;
+                  const hash = s.data_hash || '';
+                  const hashShort = hash ? hash.slice(0, 16) + '…' : '';
+                  const signedAt = s.signed_at ? new Date(s.signed_at.replace(' ', 'T') + 'Z').toLocaleString('en-NZ') : '';
+                  return (
+                    <div key={s.id} className="border border-slate-200 rounded-lg p-3 bg-white">
+                      <div className="flex items-start gap-3">
+                        {s.signature_png && (
+                          <img
+                            src={s.signature_png}
+                            alt={`Signature by ${s.signer_name || 'signer'}`}
+                            className="bg-slate-50 border border-slate-200 rounded"
+                            style={{ width: '120px', height: '60px', objectFit: 'contain' }}
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-slate-900">{s.signer_name || 'Unnamed signer'}</span>
+                            {s.signer_role && (
+                              <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                {s.signer_role}
+                              </span>
+                            )}
+                          </div>
+                          <dl className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                            <div>
+                              <dt className="inline text-slate-500">Signed at: </dt>
+                              <dd className="inline text-slate-800">{signedAt}</dd>
+                            </div>
+                            <div>
+                              <dt className="inline text-slate-500">IP: </dt>
+                              <dd className="inline text-slate-800 font-mono">{s.signer_ip || '—'}</dd>
+                            </div>
+                            <div className="sm:col-span-2 truncate" title={ua}>
+                              <dt className="inline text-slate-500">User agent: </dt>
+                              <dd className="inline text-slate-800">{uaShort || '—'}</dd>
+                            </div>
+                            <div className="sm:col-span-2 truncate" title={hash}>
+                              <dt className="inline text-slate-500">Payload SHA-256: </dt>
+                              <dd className="inline text-slate-800 font-mono">{hashShort || '—'}</dd>
+                            </div>
+                            {s.client_timestamp && (
+                              <div className="sm:col-span-2">
+                                <dt className="inline text-slate-500">Client timestamp: </dt>
+                                <dd className="inline text-slate-800">{s.client_timestamp}</dd>
+                              </div>
+                            )}
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic">No signature audit records.</p>
+            )}
+          </div>
         </div>
 
         {/* RIGHT: AI Summary */}
