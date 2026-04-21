@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "db:migrate": "knex --knexfile db/knexfile.js migrate:latest",
+    "db:rollback": "knex --knexfile db/knexfile.js migrate:rollback",
+    "db:status": "knex --knexfile db/knexfile.js migrate:status"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -14,8 +17,10 @@
     "express-rate-limit": "^8.3.2",
     "googleapis": "^171.4.0",
     "jsonwebtoken": "^9.0.2",
+    "knex": "^3.2.9",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.16",
+    "pg": "^8.20.0",
     "sql.js": "^1.11.0",
     "uuid": "^11.0.3"
   }

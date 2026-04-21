@@ -1,84 +1,77 @@
-const initSqlJs = require('sql.js');
-const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '..', 'formflow.db');
 let db;
+let backend;
 
-// sql.js wrapper to match better-sqlite3-like API
-function createWrapper(database) {
-  return {
-    prepare(sql) {
-      return {
-        run(...params) {
-          database.run(sql, params);
-          const lastId = database.exec("SELECT last_insert_rowid() as id")[0]?.values[0]?.[0];
-          save();
-          return { lastInsertRowid: lastId, changes: database.getRowsModified() };
-        },
-        get(...params) {
-          const stmt = database.prepare(sql);
-          stmt.bind(params);
-          if (stmt.step()) {
-            const cols = stmt.getColumnNames();
-            const vals = stmt.get();
-            stmt.free();
-            const row = {};
-            cols.forEach((c, i) => row[c] = vals[i]);
-            return row;
-          }
-          stmt.free();
-          return undefined;
-        },
-        all(...params) {
-          const results = [];
-          const stmt = database.prepare(sql);
-          stmt.bind(params);
-          while (stmt.step()) {
-            const cols = stmt.getColumnNames();
-            const vals = stmt.get();
-            const row = {};
-            cols.forEach((c, i) => row[c] = vals[i]);
-            results.push(row);
-          }
-          stmt.free();
-          return results;
-        }
-      };
-    },
-    exec(sql) {
-      database.exec(sql);
-      save();
-    }
-  };
+async function runPgMigrations() {
+  const knex = require('knex')(require('./db/knexfile'));
+  try {
+    await knex.migrate.latest();
+    console.log('[DB] Postgres migrations applied');
+  } finally {
+    await knex.destroy();
+  }
 }
 
-function save() {
-  if (db && db._db) {
-    const data = db._db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
+async function countRows(table) {
+  const row = await db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get();
+  return Number(row.count);
+}
+
+async function seed() {
+  let seedAgencyId;
+  if ((await countRows('agencies')) === 0) {
+    const r = await db.prepare('INSERT INTO agencies (name) VALUES (?)').run('Formz');
+    seedAgencyId = r.lastInsertRowid;
+    console.log('[DB] Default agency created: Formz');
+  } else {
+    seedAgencyId = (await db.prepare('SELECT id FROM agencies ORDER BY id ASC LIMIT 1').get()).id;
+  }
+
+  await db.prepare('UPDATE agents SET agency_id = ? WHERE agency_id IS NULL').run(seedAgencyId);
+
+  if ((await countRows('agents')) === 0) {
+    const hash = bcrypt.hashSync('admin123', 10);
+    await db.prepare(
+      'INSERT INTO agents (email, password, name, phone, is_admin, agency_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run('agent@hometownrealty.co.nz', hash, 'John Mitchell', '+64 21 555 0100', 1, seedAgencyId);
+    console.log('[DB] Default admin created: agent@hometownrealty.co.nz / admin123');
   }
 }
 
 async function init() {
-  const SQL = await initSqlJs();
-
-  let database;
-  if (fs.existsSync(dbPath)) {
-    const fileBuffer = fs.readFileSync(dbPath);
-    database = new SQL.Database(fileBuffer);
+  if (process.env.DATABASE_URL) {
+    backend = 'pg';
+    await runPgMigrations();
+    const { createPgAdapter } = require('./db/pg-adapter');
+    db = createPgAdapter();
+    console.log('[DB] Using Postgres backend');
   } else {
-    database = new SQL.Database();
+    backend = 'sqlite';
+    const { createSqliteAdapter } = require('./db/sqlite-adapter');
+    db = await createSqliteAdapter();
+    await applySqliteSchema();
+    console.log('[DB] Using SQLite backend (DATABASE_URL not set)');
   }
 
-  const wrapper = createWrapper(database);
-  wrapper._db = database;
-  db = wrapper;
+  await seed();
+  return db;
+}
 
-  // Create tables
-  database.exec(`
+async function applySqliteSchema() {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS agencies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      logo_url TEXT,
+      primary_color TEXT DEFAULT '#3b82f6',
+      accent_color TEXT DEFAULT '#1e3a5f',
+      contact_email TEXT,
+      contact_phone TEXT,
+      email_footer TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE IF NOT EXISTS agents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
@@ -89,7 +82,6 @@ async function init() {
       gmail_email TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
-
     CREATE TABLE IF NOT EXISTS clients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       agent_id INTEGER NOT NULL,
@@ -99,7 +91,6 @@ async function init() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (agent_id) REFERENCES agents(id)
     );
-
     CREATE TABLE IF NOT EXISTS form_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       token TEXT UNIQUE NOT NULL,
@@ -113,7 +104,6 @@ async function init() {
       FOREIGN KEY (client_id) REFERENCES clients(id),
       FOREIGN KEY (agent_id) REFERENCES agents(id)
     );
-
     CREATE TABLE IF NOT EXISTS submissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       token_id INTEGER NOT NULL,
@@ -131,7 +121,6 @@ async function init() {
       FOREIGN KEY (client_id) REFERENCES clients(id),
       FOREIGN KEY (agent_id) REFERENCES agents(id)
     );
-
     CREATE TABLE IF NOT EXISTS e_signatures (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       submission_id INTEGER NOT NULL,
@@ -147,41 +136,23 @@ async function init() {
     );
   `);
 
-  // Migrate: add columns if missing
-  try { database.exec('ALTER TABLE agents ADD COLUMN gmail_tokens TEXT'); } catch {}
-  try { database.exec('ALTER TABLE agents ADD COLUMN gmail_email TEXT'); } catch {}
-  try { database.exec('ALTER TABLE agents ADD COLUMN is_admin INTEGER DEFAULT 0'); } catch {}
-  try { database.exec('ALTER TABLE agents ADD COLUMN company TEXT'); } catch {}
-
-  save();
-
-  // Seed default agent if none exists
-  const stmt = database.prepare("SELECT COUNT(*) as count FROM agents");
-  stmt.step();
-  const count = stmt.get()[0];
-  stmt.free();
-
-  if (count === 0) {
-    const hash = bcrypt.hashSync('admin123', 10);
-    database.run('INSERT INTO agents (email, password, name, phone, is_admin) VALUES (?, ?, ?, ?, ?)', [
-      'agent@hometownrealty.co.nz',
-      hash,
-      'John Mitchell',
-      '+64 21 555 0100',
-      1
-    ]);
-    save();
-    console.log('Default admin created: agent@hometownrealty.co.nz / admin123');
+  for (const sql of [
+    'ALTER TABLE agents ADD COLUMN gmail_tokens TEXT',
+    'ALTER TABLE agents ADD COLUMN gmail_email TEXT',
+    'ALTER TABLE agents ADD COLUMN is_admin INTEGER DEFAULT 0',
+    'ALTER TABLE agents ADD COLUMN company TEXT',
+    'ALTER TABLE agents ADD COLUMN agency_id INTEGER'
+  ]) {
+    try { await db.exec(sql); } catch {}
   }
-
-  // Ensure first agent is admin
-  try { database.exec("UPDATE agents SET is_admin = 1 WHERE id = 1 AND is_admin IS NULL OR is_admin = 0"); } catch {}
-
-  return wrapper;
 }
 
 function getDb() {
   return db;
 }
 
-module.exports = { init, getDb };
+function getBackend() {
+  return backend;
+}
+
+module.exports = { init, getDb, getBackend };

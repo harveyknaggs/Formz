@@ -82,7 +82,7 @@ function buildRawMessage({ fromEmail, to, subject, text, html }) {
 
 async function sendViaGmailAPI(agentId, { to, subject, text, html }) {
   const db = getDb();
-  const agent = db.prepare('SELECT gmail_tokens, gmail_email FROM agents WHERE id = ?').get(agentId);
+  const agent = await db.prepare('SELECT gmail_tokens, gmail_email FROM agents WHERE id = ?').get(agentId);
   if (!agent?.gmail_tokens) return false;
 
   let tokens;
@@ -90,7 +90,7 @@ async function sendViaGmailAPI(agentId, { to, subject, text, html }) {
     tokens = JSON.parse(agent.gmail_tokens);
   } catch (err) {
     console.error('Gmail tokens malformed for agent', agentId, '- clearing and requiring reconnect.');
-    db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+    await db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
     return false;
   }
 
@@ -110,10 +110,10 @@ async function sendViaGmailAPI(agentId, { to, subject, text, html }) {
       const { credentials } = await oauth2Client.refreshAccessToken();
       const merged = { ...tokens, ...credentials, refresh_token: credentials.refresh_token || tokens.refresh_token };
       oauth2Client.setCredentials(merged);
-      db.prepare('UPDATE agents SET gmail_tokens = ? WHERE id = ?').run(JSON.stringify(merged), agentId);
+      await db.prepare('UPDATE agents SET gmail_tokens = ? WHERE id = ?').run(JSON.stringify(merged), agentId);
     } catch (err) {
       console.error('Gmail proactive refresh failed for agent', agentId, '-', err.message);
-      db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+      await db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
       return false;
     }
   }
@@ -138,7 +138,7 @@ async function sendViaGmailAPI(agentId, { to, subject, text, html }) {
     // Auth error on send — try a reactive refresh + retry once
     if (!tokens.refresh_token) {
       console.error('Gmail auth error and no refresh_token available for agent', agentId);
-      db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+      await db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
       return false;
     }
 
@@ -146,10 +146,10 @@ async function sendViaGmailAPI(agentId, { to, subject, text, html }) {
       const { credentials } = await oauth2Client.refreshAccessToken();
       const merged = { ...tokens, ...credentials, refresh_token: credentials.refresh_token || tokens.refresh_token };
       oauth2Client.setCredentials(merged);
-      db.prepare('UPDATE agents SET gmail_tokens = ? WHERE id = ?').run(JSON.stringify(merged), agentId);
+      await db.prepare('UPDATE agents SET gmail_tokens = ? WHERE id = ?').run(JSON.stringify(merged), agentId);
     } catch (refreshErr) {
       console.error('Gmail refresh failed for agent', agentId, '-', refreshErr.message);
-      db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+      await db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
       return false;
     }
 
@@ -160,7 +160,7 @@ async function sendViaGmailAPI(agentId, { to, subject, text, html }) {
     } catch (retryErr) {
       console.error('Gmail API send error after refresh:', retryErr.message);
       if (isAuthError(retryErr)) {
-        db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
+        await db.prepare('UPDATE agents SET gmail_tokens = NULL WHERE id = ?').run(agentId);
       }
       return false;
     }
@@ -197,31 +197,44 @@ const FORM_LABELS = {
   sale_purchase_agreement: 'Sale & Purchase Agreement'
 };
 
+async function getAgencyRow(agentId) {
+  if (!agentId) return null;
+  return await getDb().prepare(`
+    SELECT ag.name AS brand_name, ag.logo_url, ag.primary_color, ag.accent_color, ag.contact_email AS brand_contact_email, ag.contact_phone, ag.email_footer
+    FROM agents a LEFT JOIN agencies ag ON ag.id = a.agency_id
+    WHERE a.id = ?
+  `).get(agentId);
+}
+
 async function sendFormLink({ to, clientName, agentName, formType, formCategory, link, agentId }) {
   const formLabel = FORM_LABELS[formType] || formType;
   const categoryLabel = formCategory === 'vendor' ? 'Vendor' : 'Buyer';
-  const agent = agentId ? getDb().prepare('SELECT company FROM agents WHERE id = ?').get(agentId) : null;
-  const brand = process.env.APP_NAME || agent?.company || 'Formz';
+  const agencyRow = await getAgencyRow(agentId);
+  const brand = process.env.APP_NAME || agencyRow?.brand_name || 'Formz';
+  const primaryColor = agencyRow?.primary_color || '#3b82f6';
+  const emailFooter = agencyRow?.email_footer || `Kind regards,\n${brand}`;
+  const emailFooterHtml = emailFooter.replace(/\n/g, '<br>');
 
   await sendEmail(agentId, {
     to,
     subject: `${formLabel} - Action Required | Formz`,
-    text: `Hi ${clientName},\n\n${agentName} from ${brand} has sent you a ${formLabel} form to complete.\n\nPlease click the link below:\n${link}\n\nThis link will expire in 30 days.\n\nKind regards,\n${brand}`,
+    text: `Hi ${clientName},\n\n${agentName} from ${brand} has sent you a ${formLabel} form to complete.\n\nPlease click the link below:\n${link}\n\nThis link will expire in 30 days.\n\n${emailFooter}`,
     html: `
       <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <h1 style="color: #1e3a5f; font-size: 24px; margin: 0;">Formz</h1>
-          <p style="color: #3b82f6; font-size: 14px; margin: 4px 0 0;">${brand}</p>
+          <p style="color: ${primaryColor}; font-size: 14px; margin: 4px 0 0;">${brand}</p>
         </div>
         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px;">
           <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">Hi ${clientName},</p>
           <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">${agentName} from ${brand} has sent you a <strong>${categoryLabel} - ${formLabel}</strong> form to complete.</p>
           <div style="text-align: center; margin: 32px 0;">
-            <a href="${link}" style="background: #3b82f6; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; display: inline-block;">Open & Complete Form</a>
+            <a href="${link}" style="background: ${primaryColor}; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; display: inline-block;">Open & Complete Form</a>
           </div>
           <p style="color: #64748b; font-size: 14px; margin: 0;">This link will expire in 30 days.</p>
         </div>
         <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 24px;">Formz — ${brand}</p>
+        ${agencyRow?.email_footer ? `<p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 12px;">${emailFooterHtml}</p>` : ''}
       </div>
     `,
     type: 'form_link'
@@ -250,13 +263,14 @@ async function sendSubmissionNotification({ to, agentName, clientName, formType,
 
 async function sendConfirmation({ to, clientName, formType, agentId }) {
   const formLabel = FORM_LABELS[formType] || formType;
-  const agent = agentId ? getDb().prepare('SELECT company FROM agents WHERE id = ?').get(agentId) : null;
-  const brand = process.env.APP_NAME || agent?.company || 'Formz';
+  const agencyRow = await getAgencyRow(agentId);
+  const brand = process.env.APP_NAME || agencyRow?.brand_name || 'Formz';
+  const emailFooter = agencyRow?.email_footer || `Kind regards,\n${brand}`;
 
   await sendEmail(agentId, {
     to,
     subject: `Form Received: ${formLabel} | ${brand}`,
-    text: `Hi ${clientName},\n\nThank you for submitting the ${formLabel} form.\n\nYour agent will review it and be in touch shortly.\n\nKind regards,\n${brand}`,
+    text: `Hi ${clientName},\n\nThank you for submitting the ${formLabel} form.\n\nYour agent will review it and be in touch shortly.\n\n${emailFooter}`,
     type: 'confirmation'
   });
 }

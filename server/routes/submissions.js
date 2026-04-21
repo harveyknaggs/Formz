@@ -16,10 +16,9 @@ function deriveSignerRole(label) {
   return label;
 }
 
-// Public: Submit a form
-router.post('/public/:token', (req, res) => {
+router.post('/public/:token', async (req, res) => {
   const db = getDb();
-  const tokenRow = db.prepare(`
+  const tokenRow = await db.prepare(`
     SELECT ft.*, c.name as client_name, c.email as client_email,
       a.name as agent_name, a.email as agent_email
     FROM form_tokens ft
@@ -36,13 +35,12 @@ router.post('/public/:token', (req, res) => {
   if (!formData) return res.status(400).json({ error: 'Form data is required' });
 
   const serializedFormData = JSON.stringify(formData);
-  const result = db.prepare(`
+  const result = await db.prepare(`
     INSERT INTO submissions (token_id, client_id, agent_id, form_type, form_category, form_data)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(tokenRow.id, tokenRow.client_id, tokenRow.agent_id, tokenRow.form_type, tokenRow.form_category, serializedFormData);
 
-  // E-signature audit trail (NZ ETA 2002) — capture IP, UA, and a SHA-256 hash of the
-  // serialized form payload alongside every signature image in this submission.
+  // E-signature audit trail (NZ ETA 2002)
   try {
     const submissionId = result.lastInsertRowid;
     const dataHash = crypto.createHash('sha256').update(serializedFormData).digest('hex');
@@ -64,7 +62,7 @@ router.post('/public/:token', (req, res) => {
       const signerName = formData['name_' + label] || null;
       const clientTimestamp = formData['ts_' + label] || null;
       const signerRole = deriveSignerRole(label);
-      insertSig.run(
+      await insertSig.run(
         submissionId, signerName, signerRole, signerIp, signerUa,
         dataHash, signaturePng, clientTimestamp
       );
@@ -73,7 +71,7 @@ router.post('/public/:token', (req, res) => {
     console.error('E-signature audit capture error:', err);
   }
 
-  db.prepare("UPDATE form_tokens SET status = 'submitted' WHERE id = ?").run(tokenRow.id);
+  await db.prepare("UPDATE form_tokens SET status = 'submitted' WHERE id = ?").run(tokenRow.id);
 
   sendConfirmation({
     to: tokenRow.client_email,
@@ -94,19 +92,22 @@ router.post('/public/:token', (req, res) => {
   res.json({ message: 'Form submitted successfully', submission_id: result.lastInsertRowid });
 });
 
-// Agent: Dashboard stats — must be before /:id to avoid matching "stats" as an id
-router.get('/stats/overview', authenticate, (req, res) => {
+router.get('/stats/overview', authenticate, async (req, res) => {
   const db = getDb();
-  const totalClients = db.prepare('SELECT COUNT(*) as count FROM clients WHERE agent_id = ?').get(req.agent.id).count;
-  const formsSentMonth = db.prepare("SELECT COUNT(*) as count FROM form_tokens WHERE agent_id = ? AND created_at >= date('now', '-30 days')").get(req.agent.id).count;
-  const formsSubmitted = db.prepare("SELECT COUNT(*) as count FROM submissions WHERE agent_id = ?").get(req.agent.id).count;
-  const formsPending = db.prepare("SELECT COUNT(*) as count FROM form_tokens WHERE agent_id = ? AND status = 'pending'").get(req.agent.id).count;
+  const totalClients = (await db.prepare('SELECT COUNT(*) as count FROM clients WHERE agent_id = ?').get(req.agent.id)).count;
+  const formsSentMonth = (await db.prepare("SELECT COUNT(*) as count FROM form_tokens WHERE agent_id = ? AND created_at >= date('now', '-30 days')").get(req.agent.id)).count;
+  const formsSubmitted = (await db.prepare("SELECT COUNT(*) as count FROM submissions WHERE agent_id = ?").get(req.agent.id)).count;
+  const formsPending = (await db.prepare("SELECT COUNT(*) as count FROM form_tokens WHERE agent_id = ? AND status = 'pending'").get(req.agent.id)).count;
 
-  res.json({ totalClients, formsSentMonth, formsSubmitted, formsPending });
+  res.json({
+    totalClients: Number(totalClients),
+    formsSentMonth: Number(formsSentMonth),
+    formsSubmitted: Number(formsSubmitted),
+    formsPending: Number(formsPending)
+  });
 });
 
-// Agent: Get all submissions
-router.get('/', authenticate, (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   const db = getDb();
   const { form_type, form_category, status } = req.query;
   let query = `
@@ -122,14 +123,13 @@ router.get('/', authenticate, (req, res) => {
   if (status) { query += ' AND s.status = ?'; params.push(status); }
 
   query += ' ORDER BY s.submitted_at DESC';
-  const submissions = db.prepare(query).all(...params);
+  const submissions = await db.prepare(query).all(...params);
   res.json(submissions);
 });
 
-// Agent: Get single submission
-router.get('/:id', authenticate, (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
   const db = getDb();
-  const submission = db.prepare(`
+  const submission = await db.prepare(`
     SELECT s.*, c.name as client_name, c.email as client_email, c.phone as client_phone
     FROM submissions s
     JOIN clients c ON c.id = s.client_id
@@ -138,32 +138,30 @@ router.get('/:id', authenticate, (req, res) => {
 
   if (!submission) return res.status(404).json({ error: 'Submission not found' });
   submission.form_data = JSON.parse(submission.form_data);
-  const signatures = db.prepare('SELECT * FROM e_signatures WHERE submission_id = ? ORDER BY signed_at').all(submission.id);
+  const signatures = await db.prepare('SELECT * FROM e_signatures WHERE submission_id = ? ORDER BY signed_at').all(submission.id);
   submission.signatures = signatures;
   res.json(submission);
 });
 
-// Agent: Generate/regenerate AI summary
 router.post('/:id/summary', authenticate, async (req, res) => {
   const db = getDb();
-  const submission = db.prepare('SELECT * FROM submissions WHERE id = ? AND agent_id = ?').get(parseInt(req.params.id), req.agent.id);
+  const submission = await db.prepare('SELECT * FROM submissions WHERE id = ? AND agent_id = ?').get(parseInt(req.params.id), req.agent.id);
   if (!submission) return res.status(404).json({ error: 'Submission not found' });
 
   const formData = JSON.parse(submission.form_data);
   const result = await generateSummary(formData, submission.form_type, submission.form_category);
 
-  db.prepare('UPDATE submissions SET ai_summary = ? WHERE id = ?').run(result.summary, submission.id);
+  await db.prepare('UPDATE submissions SET ai_summary = ? WHERE id = ?').run(result.summary, submission.id);
   res.json({ summary: result.summary, generated: result.generated });
 });
 
-// Agent: Mark as reviewed
-router.put('/:id/review', authenticate, (req, res) => {
+router.put('/:id/review', authenticate, async (req, res) => {
   const db = getDb();
   const { notes } = req.body;
-  const submission = db.prepare('SELECT * FROM submissions WHERE id = ? AND agent_id = ?').get(parseInt(req.params.id), req.agent.id);
+  const submission = await db.prepare('SELECT * FROM submissions WHERE id = ? AND agent_id = ?').get(parseInt(req.params.id), req.agent.id);
   if (!submission) return res.status(404).json({ error: 'Submission not found' });
 
-  db.prepare("UPDATE submissions SET status = 'reviewed', agent_notes = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?").run(notes || null, submission.id);
+  await db.prepare("UPDATE submissions SET status = 'reviewed', agent_notes = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?").run(notes || null, submission.id);
   res.json({ message: 'Marked as reviewed' });
 });
 

@@ -14,14 +14,14 @@ const FORM_TYPES = {
 };
 
 // Send forms — now sends a single link per category (buyer or vendor)
-router.post('/send', authenticate, (req, res) => {
+router.post('/send', authenticate, async (req, res) => {
   const db = getDb();
   const { client_id, form_category } = req.body;
   if (!client_id || !form_category) {
     return res.status(400).json({ error: 'client_id and form_category are required' });
   }
 
-  const client = db.prepare('SELECT * FROM clients WHERE id = ? AND agent_id = ?').get(client_id, req.agent.id);
+  const client = await db.prepare('SELECT * FROM clients WHERE id = ? AND agent_id = ?').get(client_id, req.agent.id);
   if (!client) return res.status(404).json({ error: 'Client not found' });
 
   const validTypes = FORM_TYPES[form_category];
@@ -32,7 +32,7 @@ router.post('/send', authenticate, (req, res) => {
 
   // Create a single token for the entire form category
   const formType = form_category === 'vendor' ? 'vendor_forms' : 'buyer_forms';
-  db.prepare('INSERT INTO form_tokens (token, client_id, agent_id, form_type, form_category, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(token, client_id, req.agent.id, formType, form_category, expiresAt);
+  await db.prepare('INSERT INTO form_tokens (token, client_id, agent_id, form_type, form_category, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(token, client_id, req.agent.id, formType, form_category, expiresAt);
 
   const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
   console.log('[Forms] APP_URL env:', process.env.APP_URL, '| Using:', appUrl);
@@ -51,9 +51,9 @@ router.post('/send', authenticate, (req, res) => {
   res.json({ message: `${form_category} forms sent successfully`, token, link });
 });
 
-router.get('/sent', authenticate, (req, res) => {
+router.get('/sent', authenticate, async (req, res) => {
   const db = getDb();
-  const forms = db.prepare(`
+  const forms = await db.prepare(`
     SELECT ft.*, c.name as client_name, c.email as client_email,
       s.id as submission_id, s.status as submission_status, s.submitted_at
     FROM form_tokens ft
@@ -65,9 +65,9 @@ router.get('/sent', authenticate, (req, res) => {
   res.json(forms);
 });
 
-router.get('/public/:token', (req, res) => {
+router.get('/public/:token', async (req, res) => {
   const db = getDb();
-  const token = db.prepare(`
+  const token = await db.prepare(`
     SELECT ft.*, c.name as client_name, c.email as client_email, a.name as agent_name
     FROM form_tokens ft
     JOIN clients c ON c.id = ft.client_id
@@ -90,9 +90,9 @@ router.get('/public/:token', (req, res) => {
 });
 
 // Serve raw HTML form with injected submission logic
-router.get('/html/:token', (req, res) => {
+router.get('/html/:token', async (req, res) => {
   const db = getDb();
-  const tokenRow = db.prepare(`
+  const tokenRow = await db.prepare(`
     SELECT ft.*, c.name as client_name, c.email as client_email, a.name as agent_name
     FROM form_tokens ft
     JOIN clients c ON c.id = ft.client_id
@@ -112,6 +112,24 @@ router.get('/html/:token', (req, res) => {
   }
 
   let html = fs.readFileSync(htmlPath, 'utf-8');
+
+  // Substitute agency brand placeholders
+  const agencyRow = await db.prepare(`
+    SELECT ag.name AS brand_name, ag.logo_url, ag.primary_color, ag.accent_color
+    FROM agents a LEFT JOIN agencies ag ON ag.id = a.agency_id
+    WHERE a.id = ?
+  `).get(tokenRow.agent_id);
+
+  const brandName = agencyRow?.brand_name || 'Formz';
+  const brandPrimary = agencyRow?.primary_color || '#3b82f6';
+  const brandAccent = agencyRow?.accent_color || '#1e3a5f';
+  const brandLogoUrl = agencyRow?.logo_url || '';
+
+  html = html
+    .replace(/\{\{brand_name\}\}/g, brandName)
+    .replace(/\{\{brand_primary\}\}/g, brandPrimary)
+    .replace(/\{\{brand_accent\}\}/g, brandAccent)
+    .replace(/\{\{brand_logo_url\}\}/g, brandLogoUrl);
 
   // Inject submission script before </body>
   const injectedScript = `
@@ -167,16 +185,6 @@ window.submitForm = async function(formId) {
       if (tsEl?.textContent) formData['ts_' + sigLabel] = tsEl.textContent;
     }
   });
-
-  // Add metadata
-  formData._formId = formId;
-  formData._formCategory = '${tokenRow.form_category}';
-  formData._clientName = '${tokenRow.client_name.replace(/'/g, "\\'")}';
-  formData._submittedAt = new Date().toISOString();
-
-  // Collect which tab is active
-  const activeTab = document.querySelector('.tab-content.active');
-  if (activeTab) formData._activeTab = activeTab.id;
 
   // Submit to API
   const submitBtn = document.querySelector('.btn-submit');

@@ -55,7 +55,7 @@ router.get('/callback', async (req, res) => {
 
     // Store tokens in DB
     const db = getDb();
-    db.prepare('UPDATE agents SET gmail_tokens = ?, gmail_email = ? WHERE id = ?').run(
+    await db.prepare('UPDATE agents SET gmail_tokens = ?, gmail_email = ? WHERE id = ?').run(
       JSON.stringify(tokens), gmailEmail, agentId
     );
 
@@ -69,22 +69,24 @@ router.get('/callback', async (req, res) => {
 });
 
 // Get Gmail connection status
-router.get('/status', authenticate, (req, res) => {
+router.get('/status', authenticate, async (req, res) => {
   const db = getDb();
-  const agent = db.prepare('SELECT gmail_email, gmail_tokens FROM agents WHERE id = ?').get(req.agent.id);
+  const agent = await db.prepare('SELECT gmail_email, gmail_tokens FROM agents WHERE id = ?').get(req.agent.id);
   const hasEmail = !!agent?.gmail_email;
   const hasTokens = !!agent?.gmail_tokens;
+  const connected = hasEmail && hasTokens;
+  const needs_reconnect = hasEmail && !hasTokens;
   res.json({
-    connected: hasTokens,
+    connected,
     email: agent?.gmail_email || null,
-    needs_reconnect: hasEmail && !hasTokens
+    needs_reconnect
   });
 });
 
 // Disconnect Gmail
-router.post('/disconnect', authenticate, (req, res) => {
+router.post('/disconnect', authenticate, async (req, res) => {
   const db = getDb();
-  db.prepare('UPDATE agents SET gmail_tokens = NULL, gmail_email = NULL WHERE id = ?').run(req.agent.id);
+  await db.prepare('UPDATE agents SET gmail_tokens = NULL, gmail_email = NULL WHERE id = ?').run(req.agent.id);
   res.json({ message: 'Gmail disconnected' });
 });
 
