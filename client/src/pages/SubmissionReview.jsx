@@ -13,6 +13,14 @@ const FORM_LABELS = {
   buyer_forms: 'Buyer Forms',
 };
 
+// Parses both Postgres (ISO 8601) and SQLite ("2026-04-21 12:26:04") timestamps.
+function formatNZDate(value) {
+  if (!value) return '';
+  let d = new Date(value);
+  if (isNaN(d.getTime())) d = new Date(String(value).replace(' ', 'T') + 'Z');
+  return isNaN(d.getTime()) ? '' : d.toLocaleString('en-NZ');
+}
+
 export default function SubmissionReview() {
   const { id } = useParams();
   const { api } = useAuth();
@@ -21,6 +29,15 @@ export default function SubmissionReview() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [expandedSigs, setExpandedSigs] = useState(() => new Set());
+
+  const toggleSigDetails = (sigId) => {
+    setExpandedSigs(prev => {
+      const next = new Set(prev);
+      if (next.has(sigId)) next.delete(sigId); else next.add(sigId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     api(`/api/submissions/${id}`).then(data => {
@@ -82,7 +99,7 @@ export default function SubmissionReview() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{sub.client_name} — {FORM_LABELS[sub.form_type] || sub.form_type}</h1>
-          <p className="text-slate-500">Submitted {new Date(sub.submitted_at).toLocaleString('en-NZ')}</p>
+          <p className="text-slate-500">Submitted {formatNZDate(sub.submitted_at)}</p>
         </div>
         <span className={`badge-${sub.status} text-sm px-3 py-1`}>{sub.status}</span>
       </div>
@@ -139,10 +156,9 @@ export default function SubmissionReview() {
               <div className="space-y-3">
                 {sub.signatures.map(s => {
                   const ua = s.signer_ua || '';
-                  const uaShort = ua.length > 60 ? ua.slice(0, 60) + '…' : ua;
                   const hash = s.data_hash || '';
-                  const hashShort = hash ? hash.slice(0, 16) + '…' : '';
-                  const signedAt = s.signed_at ? new Date(s.signed_at.replace(' ', 'T') + 'Z').toLocaleString('en-NZ') : '';
+                  const signedAt = formatNZDate(s.signed_at);
+                  const isExpanded = expandedSigs.has(s.id);
                   return (
                     <div key={s.id} className="border border-slate-200 rounded-lg p-3 bg-white">
                       <div className="flex items-start gap-3">
@@ -166,19 +182,11 @@ export default function SubmissionReview() {
                           <dl className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
                             <div>
                               <dt className="inline text-slate-500">Signed at: </dt>
-                              <dd className="inline text-slate-800">{signedAt}</dd>
+                              <dd className="inline text-slate-800">{signedAt || '—'}</dd>
                             </div>
                             <div>
                               <dt className="inline text-slate-500">IP: </dt>
                               <dd className="inline text-slate-800 font-mono">{s.signer_ip || '—'}</dd>
-                            </div>
-                            <div className="sm:col-span-2 truncate" title={ua}>
-                              <dt className="inline text-slate-500">User agent: </dt>
-                              <dd className="inline text-slate-800">{uaShort || '—'}</dd>
-                            </div>
-                            <div className="sm:col-span-2 truncate" title={hash}>
-                              <dt className="inline text-slate-500">Payload SHA-256: </dt>
-                              <dd className="inline text-slate-800 font-mono">{hashShort || '—'}</dd>
                             </div>
                             {s.client_timestamp && (
                               <div className="sm:col-span-2">
@@ -187,6 +195,25 @@ export default function SubmissionReview() {
                               </div>
                             )}
                           </dl>
+                          <button
+                            type="button"
+                            onClick={() => toggleSigDetails(s.id)}
+                            className="mt-2 text-xs text-primary hover:underline"
+                          >
+                            {isExpanded ? 'Hide verification details' : 'Show verification details'}
+                          </button>
+                          {isExpanded && (
+                            <dl className="mt-2 pt-2 border-t border-slate-100 grid grid-cols-1 gap-y-1 text-xs">
+                              <div className="break-all">
+                                <dt className="inline text-slate-500">User agent: </dt>
+                                <dd className="inline text-slate-800">{ua || '—'}</dd>
+                              </div>
+                              <div className="break-all">
+                                <dt className="inline text-slate-500">Payload SHA-256: </dt>
+                                <dd className="inline text-slate-800 font-mono">{hash || '—'}</dd>
+                              </div>
+                            </dl>
+                          )}
                         </div>
                       </div>
                     </div>
