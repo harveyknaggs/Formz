@@ -134,6 +134,48 @@ async function applySqliteSchema() {
       signed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (submission_id) REFERENCES submissions(id)
     );
+    CREATE TABLE IF NOT EXISTS properties (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_id INTEGER NOT NULL,
+      short_code TEXT UNIQUE NOT NULL,
+      address TEXT NOT NULL,
+      suburb TEXT,
+      city TEXT,
+      description TEXT,
+      asking_price TEXT,
+      bedrooms INTEGER,
+      bathrooms INTEGER,
+      floor_area INTEGER,
+      land_area INTEGER,
+      status TEXT DEFAULT 'active',
+      hero_image_url TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (agent_id) REFERENCES agents(id)
+    );
+    CREATE TABLE IF NOT EXISTS property_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_size INTEGER,
+      uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (property_id) REFERENCES properties(id)
+    );
+    CREATE TABLE IF NOT EXISTS property_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      agent_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (property_id) REFERENCES properties(id),
+      FOREIGN KEY (agent_id) REFERENCES agents(id)
+    );
   `);
 
   for (const sql of [

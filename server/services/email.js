@@ -275,4 +275,85 @@ async function sendConfirmation({ to, clientName, formType, agentId }) {
   });
 }
 
-module.exports = { sendFormLink, sendSubmissionNotification, sendConfirmation };
+async function sendLeadNotification({ agentId, to, agentName, property, lead }) {
+  const addr = property.address || 'your listing';
+  const subject = `New lead on ${addr}`;
+  const replyHref = `mailto:${lead.email}?subject=${encodeURIComponent('Re: ' + addr)}`;
+
+  const textLines = [
+    `Hi ${agentName || 'there'},`,
+    '',
+    `You have a new lead on ${addr}.`,
+    '',
+    `Name: ${lead.name}`,
+    `Email: ${lead.email}`,
+    lead.phone ? `Phone: ${lead.phone}` : null,
+    '',
+    `Reply: ${replyHref}`,
+    '',
+    'The document pack has been sent to the lead automatically.',
+    '',
+    'Kind regards,',
+    'Formz'
+  ].filter(Boolean);
+
+  await sendEmail(agentId, {
+    to,
+    subject,
+    text: textLines.join('\n'),
+    html: `
+      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px;">
+          <h2 style="color: #1e3a5f; margin: 0 0 16px;">New lead on ${addr}</h2>
+          <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">Hi ${agentName || 'there'},</p>
+          <table style="border-collapse: collapse; margin: 16px 0;">
+            <tr><td style="color: #64748b; padding: 4px 12px 4px 0;">Name</td><td style="color: #0f172a; font-weight: 600;">${lead.name}</td></tr>
+            <tr><td style="color: #64748b; padding: 4px 12px 4px 0;">Email</td><td style="color: #0f172a;"><a href="mailto:${lead.email}" style="color: #3b82f6; text-decoration: none;">${lead.email}</a></td></tr>
+            ${lead.phone ? `<tr><td style="color: #64748b; padding: 4px 12px 4px 0;">Phone</td><td style="color: #0f172a;">${lead.phone}</td></tr>` : ''}
+          </table>
+          <div style="text-align: center; margin: 32px 0 16px;">
+            <a href="${replyHref}" style="background: #3b82f6; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 15px; font-weight: 600; display: inline-block;">Reply to ${lead.name}</a>
+          </div>
+          <p style="color: #64748b; font-size: 13px; margin: 0;">The document pack has been sent to them automatically.</p>
+        </div>
+      </div>
+    `,
+    type: 'lead_notification'
+  });
+}
+
+async function sendDocPackToLead({ to, leadName, property, documents, leadId }) {
+  const addr = property.address || 'the listing';
+  const subject = `Documents for ${addr}`;
+  const base = process.env.APP_URL || 'http://localhost:3001';
+
+  const docList = Array.isArray(documents) ? documents : [];
+  const textDocs = docList.length
+    ? docList.map(d => `- ${d.label}: ${base}/api/listings/download/${leadId}/${d.id}`).join('\n')
+    : 'No documents available yet — your agent will be in touch.';
+
+  const htmlDocs = docList.length
+    ? `<ul style="padding-left: 20px; margin: 16px 0;">${docList.map(d => `<li style="color: #334155; margin: 8px 0;"><a href="${base}/api/listings/download/${leadId}/${d.id}" style="color: #3b82f6; text-decoration: none; font-weight: 600;">${d.label}</a></li>`).join('')}</ul>`
+    : `<p style="color: #64748b;">No documents available yet — your agent will be in touch.</p>`;
+
+  await sendEmail(null, {
+    to,
+    subject,
+    text: `Hi ${leadName},\n\nThanks for your interest in ${addr}. Your documents are below:\n\n${textDocs}\n\nThese links are personal to you and expire after 30 days.\n\nKind regards,\nFormz`,
+    html: `
+      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px;">
+          <h2 style="color: #1e3a5f; margin: 0 0 8px;">Documents for ${addr}</h2>
+          <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">Hi ${leadName},</p>
+          <p style="color: #334155; font-size: 15px; margin: 0 0 8px;">Thanks for your interest. Your documents:</p>
+          ${htmlDocs}
+          <p style="color: #64748b; font-size: 13px; margin: 16px 0 0;">These links are personal to you and expire after 30 days.</p>
+        </div>
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 24px;">Formz</p>
+      </div>
+    `,
+    type: 'doc_pack'
+  });
+}
+
+module.exports = { sendFormLink, sendSubmissionNotification, sendConfirmation, sendLeadNotification, sendDocPackToLead };

@@ -12,6 +12,10 @@ import Settings from './pages/Settings';
 import Admin from './pages/Admin';
 import ClientForm from './pages/ClientForm';
 import FormConfirmation from './pages/FormConfirmation';
+import Listings from './pages/Listings';
+import ListingForm from './pages/ListingForm';
+import ListingDetail from './pages/ListingDetail';
+import PublicListing from './pages/PublicListing';
 
 function PrivateRoute({ children }) {
   const { agent, loading } = useAuth();
@@ -28,6 +32,7 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/form/:token" element={<ClientForm />} />
       <Route path="/form/:token/confirmation" element={<FormConfirmation />} />
+      <Route path="/p/:shortCode" element={<PublicListing />} />
       <Route path="/login" element={agent ? <Navigate to="/dashboard" /> : <Login />} />
 
       {/* Agent routes */}
@@ -36,6 +41,10 @@ function AppRoutes() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="clients" element={<Clients />} />
         <Route path="clients/:id" element={<ClientDetail />} />
+        <Route path="listings" element={<Listings />} />
+        <Route path="listings/new" element={<ListingForm />} />
+        <Route path="listings/:id" element={<ListingDetail />} />
+        <Route path="listings/:id/edit" element={<ListingForm />} />
         <Route path="forms-sent" element={<FormsSent />} />
         <Route path="submissions" element={<Submissions />} />
         <Route path="submissions/:id" element={<SubmissionReview />} />

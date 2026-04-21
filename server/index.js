@@ -2,8 +2,10 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { init } = require('./db');
 const { authLimiter, publicFormLimiter, genericApiLimiter } = require('./middleware/rateLimit');
+const { UPLOADS_DIR } = require('./config/paths');
 
 async function start() {
   // Initialize DB first
@@ -33,6 +35,7 @@ async function start() {
   app.use('/api/forms', require('./routes/forms'));
   app.use('/api/submissions', require('./routes/submissions'));
   app.use('/api/gmail', require('./routes/gmail'));
+  app.use('/api/listings', require('./routes/listings'));
 
   // Health check
   app.get('/api/health', (req, res) => res.json({ status: 'ok', app: 'FormFlow RE' }));
@@ -49,8 +52,11 @@ async function start() {
     }
   });
 
+  fs.mkdirSync(path.join(UPLOADS_DIR, 'properties'), { recursive: true });
+
   app.listen(PORT, () => {
     console.log(`\n🏠 FormFlow RE server running on http://localhost:${PORT}`);
+    console.log(`📂 Uploads dir: ${UPLOADS_DIR}`);
     console.log(`📊 API: http://localhost:${PORT}/api/health\n`);
   });
 }

@@ -75,7 +75,6 @@ export default function Submissions() {
           <option value="vendor_disclosure">Vendor Disclosure</option>
           <option value="agency_agreement">Agency Agreement</option>
           <option value="purchaser_acknowledgement">Purchaser Acknowledgement</option>
-          <option value="sale_purchase_agreement">Sale & Purchase</option>
         </select>
         <select className="input w-auto" value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}>
           <option value="">All Statuses</option>
