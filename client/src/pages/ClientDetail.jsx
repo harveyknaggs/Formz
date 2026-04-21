@@ -54,7 +54,7 @@ export default function ClientDetail() {
       {/* Send Forms Modal */}
       {showSend && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowSend(false)}>
-          <div className="card w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div className={`card w-full ${sentLink ? 'max-w-md' : 'max-w-3xl'}`} onClick={e => e.stopPropagation()}>
             {sentLink ? (
               <>
                 <div className="text-center py-4">
@@ -73,40 +73,87 @@ export default function ClientDetail() {
               </>
             ) : (
               <>
-                <h2 className="text-lg font-semibold mb-2">Send Forms to {client.name}</h2>
-                <p className="text-sm text-slate-500 mb-4">Choose the form pack to send. The client will receive a single link with all tabs.</p>
+                <div className="text-center mb-6">
+                  <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-400 font-medium">
+                    <span className="w-6 h-px bg-slate-300" />
+                    Send to {client.name}
+                    <span className="w-6 h-px bg-slate-300" />
+                  </span>
+                  <h2 className="text-2xl font-semibold text-slate-900 mt-3 mb-2">Which <span className="text-primary italic">form pack</span> fits this job?</h2>
+                  <p className="text-sm text-slate-500 max-w-md mx-auto">One link, every form in the pack. Hover a card to preview, click to select.</p>
+                </div>
 
-                <div className="space-y-3 mb-6">
-                  <label
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                  {/* Vendor card */}
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setCategory('vendor')}
-                    className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      category === 'vendor' ? 'border-[#0099cc] bg-[#0099cc]/5' : 'border-slate-200 hover:border-slate-300'
-                    }`}
+                    onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setCategory('vendor')}
+                    className={`pick-card vendor ${category === 'vendor' ? 'is-selected' : ''}`}
                   >
-                    <input type="radio" checked={category === 'vendor'} onChange={() => setCategory('vendor')} className="w-4 h-4 text-[#0099cc]" />
-                    <div>
-                      <div className="font-semibold text-slate-900">Vendor Forms</div>
-                      <div className="text-xs text-slate-500 mt-0.5">Market Appraisal · Vendor Disclosure · Agency Agreement · Seller's Guide</div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="pick-num">01</span>
+                      <span className="pick-tag"><span className="pip" />3 forms · ~10 min</span>
                     </div>
-                  </label>
-                  <label
+                    <div className="pick-art">
+                      <div className="art-rows">
+                        <div className="r r1" />
+                        <div className="r r2" />
+                        <div className="r r3" />
+                        <div className="r r4" />
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-semibold text-navy leading-snug mb-1">Vendor pack</h3>
+                    <p className="text-sm text-slate-500 leading-snug mb-3">Market appraisal, vendor disclosure & agency agreement — everything to list a property.</p>
+                    <div className="pick-foot">
+                      <span className="meta"><b>3</b> forms</span>
+                      <span className="cta">
+                        {category === 'vendor' ? 'Selected' : 'Choose'}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 5l7 7-7 7" /></svg>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Buyer card */}
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setCategory('buyer')}
-                    className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      category === 'buyer' ? 'border-[#003087] bg-[#003087]/5' : 'border-slate-200 hover:border-slate-300'
-                    }`}
+                    onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setCategory('buyer')}
+                    className={`pick-card buyer ${category === 'buyer' ? 'is-selected' : ''}`}
                   >
-                    <input type="radio" checked={category === 'buyer'} onChange={() => setCategory('buyer')} className="w-4 h-4 text-[#003087]" />
-                    <div>
-                      <div className="font-semibold text-slate-900">Buyer Forms</div>
-                      <div className="text-xs text-slate-500 mt-0.5">Purchaser Acknowledgement · Sale & Purchase Agreement · Buyer's Guide</div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="pick-num">02</span>
+                      <span className="pick-tag"><span className="pip" />1 form · ~3 min</span>
                     </div>
-                  </label>
+                    <div className="pick-art">
+                      <div className="art-sign">
+                        <div className="pad" />
+                        <svg className="scribble" viewBox="0 0 130 30" preserveAspectRatio="none">
+                          <path d="M2 22 C 12 8, 22 30, 32 14 S 52 22, 62 12 S 82 26, 92 16 S 112 10, 124 18" />
+                        </svg>
+                        <div className="check">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-11" /></svg>
+                        </div>
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-semibold text-navy leading-snug mb-1">Buyer pack</h3>
+                    <p className="text-sm text-slate-500 leading-snug mb-3">Purchaser acknowledgement — confirms they understand the property they're offering on.</p>
+                    <div className="pick-foot">
+                      <span className="meta"><b>1</b> form</span>
+                      <span className="cta">
+                        {category === 'buyer' ? 'Selected' : 'Choose'}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 5l7 7-7 7" /></svg>
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setShowSend(false)} className="btn-secondary">Cancel</button>
                   <button onClick={handleSend} disabled={sending} className="btn-primary">
-                    {sending ? 'Sending...' : `Send ${category === 'vendor' ? 'Vendor' : 'Buyer'} Forms`}
+                    {sending ? 'Sending...' : `Send ${category === 'vendor' ? 'Vendor' : 'Buyer'} pack`}
                   </button>
                 </div>
               </>
