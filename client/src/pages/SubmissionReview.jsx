@@ -346,8 +346,23 @@ export default function SubmissionReview() {
                 <span>Generating AI summary...</span>
               </div>
             ) : summary ? (
-              <div className="prose prose-sm prose-slate max-w-none">
-                <ReactMarkdown>{summary}</ReactMarkdown>
+              <div className="text-sm text-slate-700">
+                <ReactMarkdown
+                  components={{
+                    h1: ({ children }) => <h3 className="text-xs font-semibold uppercase tracking-wide text-navy mt-4 mb-1.5 first:mt-0">{children}</h3>,
+                    h2: ({ children }) => <h3 className="text-xs font-semibold uppercase tracking-wide text-navy mt-4 mb-1.5 first:mt-0">{children}</h3>,
+                    h3: ({ children }) => <h4 className="text-xs font-semibold text-slate-600 mt-3 mb-1">{children}</h4>,
+                    p:  ({ children }) => <p className="text-sm text-slate-700 leading-relaxed mb-2 last:mb-0">{children}</p>,
+                    ul: ({ children }) => <ul className="list-disc list-outside ml-5 space-y-1 mb-2 last:mb-0 marker:text-slate-300">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal list-outside ml-5 space-y-1 mb-2 last:mb-0 marker:text-slate-400">{children}</ol>,
+                    li: ({ children }) => <li className="text-sm text-slate-700 leading-relaxed pl-1">{children}</li>,
+                    strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
+                    em: ({ children }) => <em className="italic text-slate-600">{children}</em>,
+                    hr: () => null,
+                  }}
+                >
+                  {summary}
+                </ReactMarkdown>
               </div>
             ) : (
               <p className="text-slate-400 text-center py-8">No summary generated yet.</p>
