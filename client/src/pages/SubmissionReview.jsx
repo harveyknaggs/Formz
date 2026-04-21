@@ -2,6 +2,29 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ReactMarkdown from 'react-markdown';
+import { getSectionsFor, fieldsForSection, orphanFields, signaturesForSection } from '../lib/formSections';
+
+const ART_CLASS = { rows: 'vendor', scribble: 'buyer', stack: 'stack' };
+
+function CardArt({ kind }) {
+  if (kind === 'rows') {
+    return <div className="art-rows"><div className="r r1" /><div className="r r2" /><div className="r r3" /><div className="r r4" /></div>;
+  }
+  if (kind === 'scribble') {
+    return (
+      <div className="art-sign">
+        <div className="pad" />
+        <svg className="scribble" viewBox="0 0 130 30" preserveAspectRatio="none">
+          <path d="M2 22 C 12 8, 22 30, 32 14 S 52 22, 62 12 S 82 26, 92 16 S 112 10, 124 18" />
+        </svg>
+        <div className="check">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-11" /></svg>
+        </div>
+      </div>
+    );
+  }
+  return <div className="art-stack"><div className="s s1" /><div className="s s2" /><div className="s s3" /></div>;
+}
 
 const FORM_LABELS = {
   market_appraisal: 'Market Appraisal',
@@ -30,6 +53,7 @@ export default function SubmissionReview() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [expandedSigs, setExpandedSigs] = useState(() => new Set());
+  const [activeSectionId, setActiveSectionId] = useState(null);
 
   const toggleSigDetails = (sigId) => {
     setExpandedSigs(prev => {
@@ -78,7 +102,6 @@ export default function SubmissionReview() {
 
   // Separate signatures from other data
   const signatures = {};
-  const fields = {};
   Object.entries(formData).forEach(([key, value]) => {
     if (key.startsWith('sig_')) {
       const sigName = key.replace('sig_', '');
@@ -87,10 +110,33 @@ export default function SubmissionReview() {
         name: formData['name_' + sigName] || '',
         timestamp: formData['ts_' + sigName] || ''
       };
-    } else if (!key.startsWith('name_') && !key.startsWith('ts_') && !key.startsWith('_')) {
-      fields[key] = value;
     }
   });
+
+  // Sub-form sections
+  const sections = getSectionsFor(sub.form_category);
+  const sectionsWithCounts = sections.map(s => ({
+    ...s,
+    fieldCount: fieldsForSection(formData, s).length,
+    sigCount: signaturesForSection(sub.signatures || [], s).length
+  }));
+  const orphans = orphanFields(formData, sections);
+  const activeSection = sections.find(s => s.id === activeSectionId) || sections[0];
+
+  // Fields visible under the active card
+  const activeFieldEntries = fieldsForSection(formData, activeSection);
+  const fieldsToRender = activeSection.id === sections[0].id
+    ? [...activeFieldEntries, ...orphans]
+    : activeFieldEntries;
+
+  // Signature image cards under active section (matched by name keyword)
+  const visibleSigImages = Object.entries(signatures).filter(([name]) => {
+    const lower = name.toLowerCase();
+    return activeSection.signatures.some(k => lower.includes(k));
+  });
+
+  // Audit trail rows under active section
+  const visibleAuditSigs = signaturesForSection(sub.signatures || [], activeSection);
 
   return (
     <div>
@@ -113,28 +159,81 @@ export default function SubmissionReview() {
             <button onClick={() => window.print()} className="btn-secondary text-xs py-1">Print</button>
           </div>
 
-          {/* Form Fields */}
-          <div className="space-y-4">
-            {Object.entries(fields).map(([key, value]) => (
-              <div key={key} className="border-b border-slate-100 pb-3">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{key}</label>
-                {Array.isArray(value) ? (
-                  <ul className="mt-1 text-sm text-slate-800 list-disc list-inside">
-                    {value.map((item, i) => <li key={i}>{item}</li>)}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-sm text-slate-800">{String(value)}</p>
-                )}
-              </div>
-            ))}
+          {/* Sub-form picker cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            {sectionsWithCounts.map((s, i) => {
+              const colorClass = ART_CLASS[s.art] || 'vendor';
+              const isActive = activeSection.id === s.id;
+              const totalCount = s.fieldCount + s.sigCount;
+              return (
+                <div
+                  key={s.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setActiveSectionId(s.id)}
+                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setActiveSectionId(s.id)}
+                  className={`pick-card pick-card--tab ${colorClass} ${isActive ? 'is-selected' : ''}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="pick-num">{String(i + 1).padStart(2, '0')}</span>
+                    {s.referenceOnly ? (
+                      <span className="pick-tag"><span className="pip" />Reference</span>
+                    ) : (
+                      <span className="pick-tag"><span className="pip" />{totalCount} {totalCount === 1 ? 'entry' : 'entries'}</span>
+                    )}
+                  </div>
+                  <div className="pick-art"><CardArt kind={s.art} /></div>
+                  <h3 className="font-semibold text-navy leading-snug mb-1">{s.title}</h3>
+                  <p className="pick-desc text-slate-500">{s.description}</p>
+                  <div className="pick-foot">
+                    <span className="meta">
+                      {s.referenceOnly
+                        ? <b>Info</b>
+                        : <><b>{s.fieldCount}</b> {s.fieldCount === 1 ? 'field' : 'fields'} · <b>{s.sigCount}</b> sig</>}
+                    </span>
+                    <span className="cta">
+                      {isActive ? 'Viewing' : 'View'}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 5l7 7-7 7" /></svg>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Signatures */}
-          {Object.keys(signatures).length > 0 && (
+          {/* Active section heading */}
+          <h3 className="text-sm font-semibold text-navy mb-3 uppercase tracking-wide">{activeSection.title}</h3>
+
+          {/* Form Fields for active section */}
+          {activeSection.referenceOnly ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-600">
+              This is a reference document — no fields were filled in. Buyers / vendors viewed this content as part of the pack.
+            </div>
+          ) : fieldsToRender.length === 0 ? (
+            <p className="text-sm text-slate-400 italic">No fields submitted for this form.</p>
+          ) : (
+            <div className="space-y-4">
+              {fieldsToRender.map(([key, value]) => (
+                <div key={key} className="border-b border-slate-100 pb-3">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{key}</label>
+                  {Array.isArray(value) ? (
+                    <ul className="mt-1 text-sm text-slate-800 list-disc list-inside">
+                      {value.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-800">{String(value)}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Signatures for active section */}
+          {visibleSigImages.length > 0 && (
             <div className="mt-6">
               <h3 className="text-sm font-semibold text-navy mb-3 uppercase tracking-wide">Signatures</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {Object.entries(signatures).map(([name, sig]) => (
+                {visibleSigImages.map(([name, sig]) => (
                   <div key={name} className="border border-slate-200 rounded-lg p-3 bg-slate-50">
                     <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">{name}</h4>
                     {sig.image && (
@@ -148,13 +247,13 @@ export default function SubmissionReview() {
             </div>
           )}
 
-          {/* E-signature audit trail (NZ ETA 2002) */}
+          {/* E-signature audit trail (NZ ETA 2002) — filtered to active section */}
           <div className="mt-6">
             <h3 className="text-sm font-semibold text-navy mb-1 uppercase tracking-wide">E-signature Audit Trail</h3>
             <p className="text-xs text-slate-500 mb-3">NZ Electronic Transactions Act 2002 — identity, intent, and integrity evidence for each signer.</p>
-            {Array.isArray(sub.signatures) && sub.signatures.length > 0 ? (
+            {visibleAuditSigs.length > 0 ? (
               <div className="space-y-3">
-                {sub.signatures.map(s => {
+                {visibleAuditSigs.map(s => {
                   const ua = s.signer_ua || '';
                   const hash = s.data_hash || '';
                   const signedAt = formatNZDate(s.signed_at);
@@ -221,7 +320,7 @@ export default function SubmissionReview() {
                 })}
               </div>
             ) : (
-              <p className="text-xs text-slate-400 italic">No signature audit records.</p>
+              <p className="text-xs text-slate-400 italic">No signatures on this form.</p>
             )}
           </div>
         </div>
