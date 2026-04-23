@@ -15,15 +15,15 @@ class LinzApiError extends Error {
 
 const BASE_HOST = 'https://data.linz.govt.nz';
 const ADDRESS_LAYER = 'layer-105689';
-const PARCEL_LAYER = 'layer-50804';
-const TITLE_LAYER = 'layer-50806';
+const PARCEL_LAYER = 'layer-50772';
+const TITLE_LAYER = 'layer-50804';
 
 function normalizeTenureType(raw) {
   if (!raw) return null;
   const s = String(raw).toLowerCase();
-  if (s.includes('fee simple')) return 'freehold';
   if (s.includes('cross lease')) return 'cross_lease';
   if (s.includes('unit title') || s.includes('stratum')) return 'unit_title';
+  if (s.includes('freehold') || s.includes('fee simple')) return 'freehold';
   if (s.includes('leasehold') || s.includes('lease')) return 'leasehold';
   return 'unknown';
 }
@@ -107,11 +107,40 @@ async function lookupTitleTenure(titleRef) {
     const features = Array.isArray(data && data.features) ? data.features : [];
     if (features.length === 0) return null;
     const p = features[0].properties || {};
-    return p.type || p.estate_type || p.title_type || null;
+    return p.type || p.estate_description || null;
   } catch (err) {
     console.warn('LINZ title tenure lookup failed:', err.message);
     return null;
   }
+}
+
+function ringsContainPoint(rings, lng, lat) {
+  if (!Array.isArray(rings)) return false;
+  for (const ring of rings) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      const intersect = ((yi > lat) !== (yj > lat)) &&
+        (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+
+function geometryContainsPoint(geometry, lng, lat) {
+  if (!geometry || !Array.isArray(geometry.coordinates)) return false;
+  if (geometry.type === 'Polygon') {
+    return ringsContainPoint(geometry.coordinates, lng, lat);
+  }
+  if (geometry.type === 'MultiPolygon') {
+    for (const poly of geometry.coordinates) {
+      if (ringsContainPoint(poly, lng, lat)) return true;
+    }
+  }
+  return false;
 }
 
 async function getParcelForPoint(latitude, longitude) {
@@ -120,23 +149,35 @@ async function getParcelForPoint(latitude, longitude) {
   const lng = Number(longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-  const cql = `CONTAINS(shape, POINT(${lng} ${lat}))`;
+  // LINZ stores parcel shapes in EPSG:4167 (NZGD2000); CQL CONTAINS(shape, POINT ...)
+  // with WGS84 coords misses everything, so we bbox-query a small area and then
+  // do a client-side point-in-polygon test to find the actual containing parcel.
+  const pad = 0.00025;
+  const bbox = [lng - pad, lat - pad, lng + pad, lat + pad].join(',') + ',EPSG:4326';
 
   const url = buildWfsUrl(key, {
     typeNames: PARCEL_LAYER,
-    count: '1',
-    cql_filter: cql,
+    count: '40',
+    bbox,
   });
 
   const data = await wfsFetch(url);
   const features = Array.isArray(data && data.features) ? data.features : [];
   if (features.length === 0) return null;
 
-  const p = features[0].properties || {};
+  let match = features.find(f => geometryContainsPoint(f.geometry, lng, lat));
+  // Fall back to the smallest nearby parcel if no polygon contained the point exactly
+  if (!match) {
+    match = features
+      .filter(f => Number.isFinite(Number((f.properties || {}).calc_area)))
+      .sort((a, b) => Number(a.properties.calc_area) - Number(b.properties.calc_area))[0] || features[0];
+  }
+
+  const p = match.properties || {};
   const legal_description = typeof p.appellation === 'string' && p.appellation.trim() ? p.appellation.trim() : null;
 
   let land_area_m2 = null;
-  if (Number.isFinite(Number(p.shape_area))) land_area_m2 = Math.round(Number(p.shape_area));
+  if (Number.isFinite(Number(p.calc_area))) land_area_m2 = Math.round(Number(p.calc_area));
   else if (Number.isFinite(Number(p.survey_area))) land_area_m2 = Math.round(Number(p.survey_area));
 
   const titlesStr = typeof p.titles === 'string' && p.titles.trim() ? p.titles.trim() : null;
