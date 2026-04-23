@@ -322,7 +322,7 @@ async function sendLeadNotification({ agentId, to, agentName, property, lead }) 
   });
 }
 
-async function sendDocPackToLead({ to, leadName, property, documents, leadId }) {
+async function sendDocPackToLead({ agentId, to, leadName, property, documents, leadId }) {
   const addr = property.address || 'the listing';
   const subject = `Documents for ${addr}`;
   const base = process.env.APP_URL || 'http://localhost:3001';
@@ -336,7 +336,7 @@ async function sendDocPackToLead({ to, leadName, property, documents, leadId }) 
     ? `<ul style="padding-left: 20px; margin: 16px 0;">${docList.map(d => `<li style="color: #334155; margin: 8px 0;"><a href="${base}/api/listings/download/${leadId}/${d.id}" style="color: #3b82f6; text-decoration: none; font-weight: 600;">${d.label}</a></li>`).join('')}</ul>`
     : `<p style="color: #64748b;">No documents available yet — your agent will be in touch.</p>`;
 
-  await sendEmail(null, {
+  await sendEmail(agentId, {
     to,
     subject,
     text: `Hi ${leadName},\n\nThanks for your interest in ${addr}. Your documents are below:\n\n${textDocs}\n\nThese links are personal to you and expire after 30 days.\n\nKind regards,\nFormz`,

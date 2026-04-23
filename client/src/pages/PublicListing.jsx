@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import ListingSkeleton from '../components/ListingSkeleton';
+import PhotoGallery from '../components/PhotoGallery';
 
 const KIND_LABELS = {
   lim: 'LIM Report',
@@ -7,6 +9,12 @@ const KIND_LABELS = {
   builders_report: "Builder's Report",
   other: 'Document',
 };
+
+function initialsFromName(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map(p => p[0]?.toUpperCase() || '').join('') || '?';
+}
 
 export default function PublicListing() {
   const { shortCode } = useParams();
@@ -38,6 +46,13 @@ export default function PublicListing() {
     return () => { cancelled = true; };
   }, [shortCode]);
 
+  useEffect(() => {
+    if (listing?.address) {
+      document.title = `${listing.address} — Formz`;
+    }
+    return () => { document.title = 'Formz'; };
+  }, [listing?.address]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError('');
@@ -65,7 +80,12 @@ export default function PublicListing() {
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+      if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error('Too many requests — please wait a minute and try again.');
+        }
+        throw new Error(data.error || 'Something went wrong. Please try again.');
+      }
       setSubmitted({ name: body.name, email: body.email });
     } catch (err) {
       setSubmitError(err.message);
@@ -75,11 +95,7 @@ export default function PublicListing() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
+    return <ListingSkeleton variant="public" />;
   }
 
   if (notFound || !listing) {
@@ -102,24 +118,13 @@ export default function PublicListing() {
 
   const docs = listing.documents || [];
   const locationLine = [listing.suburb, listing.city].filter(Boolean).join(', ');
+  const galleryImages = Array.isArray(listing.images) ? listing.images : [];
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
-      {/* Hero */}
-      {listing.hero_image_url ? (
-        <div className="w-full h-64 sm:h-80 md:h-96 bg-slate-200 overflow-hidden">
-          <img
-            src={listing.hero_image_url}
-            alt={listing.address}
-            className="w-full h-full object-cover"
-            onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
-          />
-        </div>
-      ) : (
-        <div className="w-full h-48 sm:h-64 bg-gradient-to-br from-navy via-primary to-primary-light" />
-      )}
+      <PhotoGallery images={galleryImages} address={listing.address} />
 
-      <div className="max-w-2xl mx-auto px-4 -mt-8 sm:-mt-12 relative">
+      <div className={`max-w-2xl mx-auto px-4 ${galleryImages.length > 1 ? 'mt-6' : '-mt-8 sm:-mt-12'} relative`}>
         {/* Property card */}
         <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">
@@ -179,6 +184,42 @@ export default function PublicListing() {
           )}
         </div>
 
+        {/* Street View */}
+        {listing.latitude != null && listing.longitude != null && import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-6">
+            <h2 className="text-sm font-semibold text-slate-900 mb-3">Street view</h2>
+            <div className="w-full h-64 sm:h-80 rounded-lg overflow-hidden bg-slate-100">
+              <iframe
+                title="Street view"
+                className="w-full h-full border-0"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                src={`https://www.google.com/maps/embed/v1/streetview?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&location=${listing.latitude},${listing.longitude}`}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-2">Imagery provided by Google. May not reflect current condition.</p>
+          </div>
+        )}
+
+        {/* Nearby schools */}
+        {Array.isArray(listing.nearby_schools) && listing.nearby_schools.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Nearby schools</h2>
+            <ul className="divide-y divide-slate-100">
+              {listing.nearby_schools.map((s, i) => (
+                <li key={i} className="flex items-center justify-between py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-slate-800 truncate">{s.name}</p>
+                    <p className="text-xs text-slate-500">{s.type}</p>
+                  </div>
+                  <span className="text-sm text-slate-600 font-medium shrink-0">{s.distance_km} km</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-slate-500 mt-3">Based on straight-line distance. Check school zone maps for enrolment eligibility.</p>
+          </div>
+        )}
+
         {/* Documents (locked) */}
         {docs.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
@@ -200,12 +241,16 @@ export default function PublicListing() {
                     <p className="font-medium text-slate-700 truncate">{d.label}</p>
                     <p className="text-xs text-slate-500">{KIND_LABELS[d.kind] || 'Document'}</p>
                   </div>
-                  <span className="text-xs text-slate-400 font-medium">Locked</span>
+                  <span className="text-xs text-slate-400 font-medium">
+                    {submitted ? 'Emailed' : 'Locked'}
+                  </span>
                 </li>
               ))}
             </ul>
             <p className="text-xs text-slate-500 mt-3">
-              Request access below to have these emailed to you.
+              {submitted
+                ? 'Check your inbox for download links.'
+                : 'Request access below to have these emailed to you.'}
             </p>
           </div>
         )}
@@ -293,9 +338,29 @@ export default function PublicListing() {
 
         {/* Agent footer */}
         {listing.agent_name && (
-          <p className="text-center text-sm text-slate-500">
-            Presented by <span className="font-medium text-slate-700">{listing.agent_name}</span>
-          </p>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-navy to-primary text-white flex items-center justify-center font-semibold shrink-0">
+              {initialsFromName(listing.agent_name)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Presented by</p>
+              <p className="font-semibold text-slate-900 truncate">{listing.agent_name}</p>
+              {(listing.agent_email || listing.agent_phone) && (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-sm">
+                  {listing.agent_phone && (
+                    <a href={`tel:${listing.agent_phone}`} className="text-primary hover:underline">
+                      {listing.agent_phone}
+                    </a>
+                  )}
+                  {listing.agent_email && (
+                    <a href={`mailto:${listing.agent_email}`} className="text-primary hover:underline truncate">
+                      {listing.agent_email}
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>

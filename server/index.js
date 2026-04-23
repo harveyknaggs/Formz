@@ -43,6 +43,12 @@ async function start() {
   // Serve static files from server/public
   app.use('/public', express.static(path.join(__dirname, 'public')));
 
+  // Serve public property images (gallery photos, hero images)
+  app.use('/uploads/property-images', express.static(path.join(UPLOADS_DIR, 'property-images'), {
+    maxAge: '7d',
+    fallthrough: false,
+  }));
+
   // Serve static frontend in production
   const clientDist = path.join(__dirname, '..', 'client', 'dist');
   app.use(express.static(clientDist));
@@ -53,6 +59,7 @@ async function start() {
   });
 
   fs.mkdirSync(path.join(UPLOADS_DIR, 'properties'), { recursive: true });
+  fs.mkdirSync(path.join(UPLOADS_DIR, 'property-images'), { recursive: true });
 
   app.listen(PORT, () => {
     console.log(`\n🏠 FormFlow RE server running on http://localhost:${PORT}`);

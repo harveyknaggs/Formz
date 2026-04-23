@@ -11,4 +11,24 @@ const uploadPropertyDoc = multer({
   }
 });
 
-module.exports = { uploadPropertyDoc };
+const IMAGE_MIMES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
+
+const uploadPropertyImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!IMAGE_MIMES.has(file.mimetype)) {
+      return cb(new Error('Only JPG, PNG, WEBP or HEIC images are allowed'));
+    }
+    cb(null, true);
+  }
+});
+
+module.exports = { uploadPropertyDoc, uploadPropertyImage };

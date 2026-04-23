@@ -176,6 +176,21 @@ async function applySqliteSchema() {
       FOREIGN KEY (property_id) REFERENCES properties(id),
       FOREIGN KEY (agent_id) REFERENCES agents(id)
     );
+    CREATE TABLE IF NOT EXISTS property_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      thumb_url TEXT,
+      alt TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      width INTEGER,
+      height INTEGER,
+      is_hero INTEGER NOT NULL DEFAULT 0,
+      uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_property_images_property_id ON property_images(property_id);
+    CREATE INDEX IF NOT EXISTS idx_property_images_sort ON property_images(property_id, sort_order);
   `);
 
   for (const sql of [
@@ -183,7 +198,13 @@ async function applySqliteSchema() {
     'ALTER TABLE agents ADD COLUMN gmail_email TEXT',
     'ALTER TABLE agents ADD COLUMN is_admin INTEGER DEFAULT 0',
     'ALTER TABLE agents ADD COLUMN company TEXT',
-    'ALTER TABLE agents ADD COLUMN agency_id INTEGER'
+    'ALTER TABLE agents ADD COLUMN agency_id INTEGER',
+    'ALTER TABLE properties ADD COLUMN latitude REAL',
+    'ALTER TABLE properties ADD COLUMN longitude REAL',
+    'ALTER TABLE properties ADD COLUMN legal_description TEXT',
+    'ALTER TABLE properties ADD COLUMN land_area_m2 REAL',
+    'ALTER TABLE properties ADD COLUMN parcel_titles TEXT',
+    'ALTER TABLE properties ADD COLUMN tenure_type TEXT'
   ]) {
     try { await db.exec(sql); } catch {}
   }

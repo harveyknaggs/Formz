@@ -1,20 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Listings() {
   const { api } = useAuth();
-  const navigate = useNavigate();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     api('/api/listings')
-      .then(data => setListings(Array.isArray(data) ? data : []))
-      .catch(err => console.error(err))
-      .finally(() => setLoading(false));
-  }, []);
+      .then(data => { if (!cancelled) setListings(Array.isArray(data) ? data : []); })
+      .catch(err => { if (!cancelled) console.error(err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [api]);
 
   const term = search.trim().toLowerCase();
   const filtered = term
@@ -90,49 +91,46 @@ export default function Listings() {
           <p className="text-slate-400 text-center py-8">No matches for "{search}".</p>
         ) : (
           <>
-            {/* Desktop table */}
-            <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-3 px-2 font-medium text-slate-500">Code</th>
-                    <th className="text-left py-3 px-2 font-medium text-slate-500">Address</th>
-                    <th className="text-left py-3 px-2 font-medium text-slate-500">Status</th>
-                    <th className="text-left py-3 px-2 font-medium text-slate-500">Docs</th>
-                    <th className="text-left py-3 px-2 font-medium text-slate-500">Leads</th>
-                    <th className="text-left py-3 px-2 font-medium text-slate-500">Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(l => (
-                    <tr
-                      key={l.id}
-                      onClick={() => navigate(`/listings/${l.id}`)}
-                      className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer"
+            {/* Desktop list */}
+            <div className="hidden sm:block">
+              <div className="grid grid-cols-[90px_1fr_110px_60px_60px_110px] gap-3 py-3 px-2 text-xs font-medium text-slate-500 border-b border-slate-200 uppercase tracking-wide">
+                <div>Code</div>
+                <div>Address</div>
+                <div>Status</div>
+                <div>Docs</div>
+                <div>Leads</div>
+                <div>Created</div>
+              </div>
+              <ul>
+                {filtered.map(l => (
+                  <li key={l.id}>
+                    <Link
+                      to={`/listings/${l.id}`}
+                      className="grid grid-cols-[90px_1fr_110px_60px_60px_110px] gap-3 items-center py-3 px-2 border-b border-slate-50 hover:bg-slate-50 transition-colors duration-100 rounded-md text-sm"
                     >
-                      <td className="py-3 px-2 font-mono text-xs text-slate-500">{l.short_code}</td>
-                      <td className="py-3 px-2">
-                        <div className="font-medium text-navy">{l.address}</div>
+                      <div className="font-mono text-xs text-slate-500">{l.short_code}</div>
+                      <div className="min-w-0">
+                        <div className="font-medium text-navy truncate">{l.address}</div>
                         {(l.suburb || l.city) && (
-                          <div className="text-xs text-slate-500">
+                          <div className="text-xs text-slate-500 truncate">
                             {[l.suburb, l.city].filter(Boolean).join(', ')}
                           </div>
                         )}
-                      </td>
-                      <td className="py-3 px-2">
+                      </div>
+                      <div>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusClass(l.status)}`}>
                           {l.status}
                         </span>
-                      </td>
-                      <td className="py-3 px-2 text-slate-600">{l.document_count ?? 0}</td>
-                      <td className="py-3 px-2 text-slate-600">{l.lead_count ?? 0}</td>
-                      <td className="py-3 px-2 text-slate-500">
+                      </div>
+                      <div className="text-slate-600">{l.document_count ?? 0}</div>
+                      <div className="text-slate-600">{l.lead_count ?? 0}</div>
+                      <div className="text-slate-500 text-xs">
                         {l.created_at ? new Date(l.created_at).toLocaleDateString('en-NZ') : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
 
             {/* Mobile cards */}

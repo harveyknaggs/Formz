@@ -6,9 +6,12 @@ const { customAlphabet } = require('nanoid');
 const { getDb } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { publicFormLimiter } = require('../middleware/rateLimit');
-const { uploadPropertyDoc } = require('../middleware/upload');
+const { uploadPropertyDoc, uploadPropertyImage } = require('../middleware/upload');
 const { isValidEmail } = require('../utils/validators');
 const { sendLeadNotification, sendDocPackToLead } = require('../services/email');
+const linz = require('../services/linz');
+const { getNearbySchools } = require('../services/schools');
+const { processPropertyImage, removeImageFiles } = require('../services/imagePipeline');
 const { UPLOADS_DIR } = require('../config/paths');
 
 const router = express.Router();
@@ -17,7 +20,8 @@ const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 5);
 
 const ALLOWED_KINDS = ['lim', 'title', 'builders_report', 'other'];
 const ALLOWED_STATUS = ['active', 'draft', 'sold', 'withdrawn'];
-const UPDATABLE_FIELDS = ['address', 'suburb', 'city', 'description', 'asking_price', 'bedrooms', 'bathrooms', 'floor_area', 'land_area', 'status', 'hero_image_url'];
+const UPDATABLE_FIELDS = ['address', 'suburb', 'city', 'description', 'asking_price', 'bedrooms', 'bathrooms', 'floor_area', 'land_area', 'status', 'hero_image_url', 'latitude', 'longitude', 'legal_description', 'land_area_m2', 'parcel_titles', 'tenure_type'];
+const ALLOWED_TENURES = ['freehold', 'leasehold', 'cross_lease', 'unit_title', 'unknown'];
 
 async function generateUniqueShortCode(db) {
   for (let i = 0; i < 10; i++) {
@@ -42,6 +46,40 @@ function asInt(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return undefined;
   return n;
+}
+
+function asCoord(v, min, max) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) return undefined;
+  return n;
+}
+
+function asFloat(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n;
+}
+
+function asParcelTitles(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (Array.isArray(v)) {
+    const joined = v.map(s => (typeof s === 'string' ? s.trim() : '')).filter(Boolean).join(', ');
+    if (joined.length > 500) return undefined;
+    return joined || null;
+  }
+  if (typeof v !== 'string') return undefined;
+  const trimmed = v.trim();
+  if (trimmed.length > 500) return undefined;
+  return trimmed || null;
+}
+
+function asTenure(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string') return undefined;
+  if (!ALLOWED_TENURES.includes(v)) return undefined;
+  return v;
 }
 
 router.get('/', authenticate, async (req, res) => {
@@ -100,15 +138,77 @@ router.post('/', authenticate, async (req, res) => {
   const heroImageUrl = asString(body.hero_image_url, 500);
   if (heroImageUrl === undefined) return res.status(400).json({ error: 'hero_image_url must be a string up to 500 characters' });
 
+  const latitude = asCoord(body.latitude, -90, 90);
+  if (latitude === undefined) return res.status(400).json({ error: 'latitude must be a number between -90 and 90' });
+
+  const longitude = asCoord(body.longitude, -180, 180);
+  if (longitude === undefined) return res.status(400).json({ error: 'longitude must be a number between -180 and 180' });
+
+  const legalDescription = asString(body.legal_description, 500);
+  if (legalDescription === undefined) return res.status(400).json({ error: 'legal_description must be a string up to 500 characters' });
+
+  const landAreaM2 = asFloat(body.land_area_m2);
+  if (landAreaM2 === undefined) return res.status(400).json({ error: 'land_area_m2 must be a non-negative number' });
+
+  const parcelTitles = asParcelTitles(body.parcel_titles);
+  if (parcelTitles === undefined) return res.status(400).json({ error: 'parcel_titles must be a string or array of strings (max 500 chars joined)' });
+
+  const tenureType = asTenure(body.tenure_type);
+  if (tenureType === undefined) return res.status(400).json({ error: `tenure_type must be one of: ${ALLOWED_TENURES.join(', ')}` });
+
   const shortCode = await generateUniqueShortCode(db);
 
   const result = await db.prepare(`
-    INSERT INTO properties (agent_id, short_code, address, suburb, city, description, asking_price, bedrooms, bathrooms, floor_area, land_area, status, hero_image_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.agent.id, shortCode, address, suburb, city, description, askingPrice, bedrooms, bathrooms, floorArea, landArea, status, heroImageUrl);
+    INSERT INTO properties (agent_id, short_code, address, suburb, city, description, asking_price, bedrooms, bathrooms, floor_area, land_area, status, hero_image_url, latitude, longitude, legal_description, land_area_m2, parcel_titles, tenure_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.agent.id, shortCode, address, suburb, city, description, askingPrice, bedrooms, bathrooms, floorArea, landArea, status, heroImageUrl, latitude, longitude, legalDescription, landAreaM2, parcelTitles, tenureType);
 
   const row = await db.prepare('SELECT * FROM properties WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(row);
+});
+
+router.get('/address-search', authenticate, async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (q.length < 3) return res.status(400).json({ error: 'q must be at least 3 characters', results: [] });
+
+  try {
+    const results = await linz.searchAddresses(q, 8);
+    res.json({ results });
+  } catch (err) {
+    if (err instanceof linz.LinzNotConfiguredError) {
+      return res.status(503).json({ error: 'Address lookup is not configured', results: [] });
+    }
+    if (err instanceof linz.LinzApiError) {
+      console.error('LINZ address-search failed:', err.status, err.message);
+      return res.status(502).json({ error: 'Address lookup temporarily unavailable', results: [] });
+    }
+    console.error('LINZ address-search error:', err.message);
+    res.status(502).json({ error: 'Address lookup temporarily unavailable', results: [] });
+  }
+});
+
+router.get('/address-details', authenticate, async (req, res) => {
+  const lat = Number(req.query.latitude);
+  const lng = Number(req.query.longitude);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return res.status(400).json({ error: 'latitude must be a number between -90 and 90' });
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return res.status(400).json({ error: 'longitude must be a number between -180 and 180' });
+
+  const emptyParcel = { legal_description: null, land_area_m2: null, titles: null, title_references: [], tenure_type: null };
+  try {
+    const parcel = await linz.getParcelForPoint(lat, lng);
+    if (!parcel) return res.json(emptyParcel);
+    res.json(parcel);
+  } catch (err) {
+    if (err instanceof linz.LinzNotConfiguredError) {
+      return res.status(503).json({ error: 'Address lookup is not configured', ...emptyParcel });
+    }
+    if (err instanceof linz.LinzApiError) {
+      console.error('LINZ address-details failed:', err.status, err.message);
+      return res.status(502).json({ error: 'Address lookup temporarily unavailable', ...emptyParcel });
+    }
+    console.error('LINZ address-details error:', err.message);
+    res.status(502).json({ error: 'Address lookup temporarily unavailable', ...emptyParcel });
+  }
 });
 
 router.get('/:id', authenticate, async (req, res) => {
@@ -121,8 +221,9 @@ router.get('/:id', authenticate, async (req, res) => {
 
   const documents = await db.prepare('SELECT id, property_id, kind, label, file_path, mime_type, file_size, uploaded_at FROM property_documents WHERE property_id = ? ORDER BY uploaded_at DESC').all(id);
   const leads = await db.prepare('SELECT id, property_id, name, email, phone, ip, user_agent, created_at FROM property_leads WHERE property_id = ? ORDER BY created_at DESC').all(id);
+  const images = await db.prepare('SELECT id, url, thumb_url, alt, sort_order, width, height, is_hero FROM property_images WHERE property_id = ? ORDER BY sort_order ASC, id ASC').all(id);
 
-  res.json({ ...property, documents, leads });
+  res.json({ ...property, documents, leads, images });
 });
 
 router.put('/:id', authenticate, async (req, res) => {
@@ -143,7 +244,7 @@ router.put('/:id', authenticate, async (req, res) => {
     updates.address = v;
   }
 
-  for (const [field, max] of [['suburb', 120], ['city', 120], ['description', 5000], ['asking_price', 60], ['hero_image_url', 500]]) {
+  for (const [field, max] of [['suburb', 120], ['city', 120], ['description', 5000], ['asking_price', 60], ['hero_image_url', 500], ['legal_description', 500]]) {
     if (body[field] !== undefined) {
       const v = asString(body[field], max);
       if (v === undefined) return res.status(400).json({ error: `${field} must be a string up to ${max} characters` });
@@ -159,11 +260,37 @@ router.put('/:id', authenticate, async (req, res) => {
     }
   }
 
+  for (const [field, min, max] of [['latitude', -90, 90], ['longitude', -180, 180]]) {
+    if (body[field] !== undefined) {
+      const v = asCoord(body[field], min, max);
+      if (v === undefined) return res.status(400).json({ error: `${field} must be a number between ${min} and ${max}` });
+      updates[field] = v;
+    }
+  }
+
   if (body.status !== undefined) {
     if (typeof body.status !== 'string' || !ALLOWED_STATUS.includes(body.status)) {
       return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUS.join(', ')}` });
     }
     updates.status = body.status;
+  }
+
+  if (body.land_area_m2 !== undefined) {
+    const v = asFloat(body.land_area_m2);
+    if (v === undefined) return res.status(400).json({ error: 'land_area_m2 must be a non-negative number' });
+    updates.land_area_m2 = v;
+  }
+
+  if (body.parcel_titles !== undefined) {
+    const v = asParcelTitles(body.parcel_titles);
+    if (v === undefined) return res.status(400).json({ error: 'parcel_titles must be a string or array of strings (max 500 chars joined)' });
+    updates.parcel_titles = v;
+  }
+
+  if (body.tenure_type !== undefined) {
+    const v = asTenure(body.tenure_type);
+    if (v === undefined) return res.status(400).json({ error: `tenure_type must be one of: ${ALLOWED_TENURES.join(', ')}` });
+    updates.tenure_type = v;
   }
 
   const keys = Object.keys(updates).filter(k => UPDATABLE_FIELDS.includes(k));
@@ -187,13 +314,17 @@ router.delete('/:id', authenticate, async (req, res) => {
 
   await db.prepare('DELETE FROM property_leads WHERE property_id = ?').run(id);
   await db.prepare('DELETE FROM property_documents WHERE property_id = ?').run(id);
+  await db.prepare('DELETE FROM property_images WHERE property_id = ?').run(id);
   await db.prepare('DELETE FROM properties WHERE id = ?').run(id);
 
   const propDir = path.join(UPLOADS_DIR, 'properties', existing.short_code);
-  try {
-    fs.rmSync(propDir, { recursive: true, force: true });
-  } catch (err) {
-    console.error('Failed to remove property files at', propDir, '-', err.message);
+  const imagesDir = path.join(UPLOADS_DIR, 'property-images', existing.short_code);
+  for (const dir of [propDir, imagesDir]) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (err) {
+      console.error('Failed to remove property files at', dir, '-', err.message);
+    }
   }
 
   res.json({ message: 'Listing deleted' });
@@ -284,6 +415,111 @@ router.delete('/:id/documents/:docId', authenticate, async (req, res) => {
   res.json({ message: 'Document deleted' });
 });
 
+router.post('/:id/images', authenticate, propertyOwnershipCheck, (req, res, next) => {
+  uploadPropertyImage.array('files', 20)(req, res, (err) => {
+    if (err) {
+      const msg = err.message || 'Upload failed';
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Each image must be 12 MB or less' });
+      return res.status(400).json({ error: msg });
+    }
+    next();
+  });
+}, async (req, res) => {
+  const db = getDb();
+  const property = req.property;
+  const files = Array.isArray(req.files) ? req.files : [];
+  if (files.length === 0) return res.status(400).json({ error: 'At least one image is required' });
+
+  const existing = await db.prepare('SELECT COUNT(*) AS n FROM property_images WHERE property_id = ?').get(property.id);
+  let nextSort = (existing?.n ?? 0);
+
+  const created = [];
+  for (const file of files) {
+    try {
+      const processed = await processPropertyImage(file.buffer, { shortCode: property.short_code });
+      const isHero = nextSort === 0 ? 1 : 0;
+      const result = await db.prepare(`
+        INSERT INTO property_images (property_id, url, thumb_url, width, height, sort_order, is_hero)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        property.id,
+        processed.url,
+        processed.thumb_url,
+        processed.width,
+        processed.height,
+        nextSort,
+        isHero
+      );
+      const row = await db.prepare('SELECT id, url, thumb_url, alt, sort_order, width, height, is_hero FROM property_images WHERE id = ?').get(result.lastInsertRowid);
+      created.push(row);
+      nextSort += 1;
+    } catch (err) {
+      console.error('Image processing failed:', err.message);
+      return res.status(400).json({ error: `Could not process image "${file.originalname}": ${err.message}` });
+    }
+  }
+
+  res.status(201).json(created);
+});
+
+router.put('/:id/images/reorder', authenticate, propertyOwnershipCheck, async (req, res) => {
+  const db = getDb();
+  const property = req.property;
+  const order = Array.isArray(req.body?.order) ? req.body.order.map(n => parseInt(n)).filter(n => Number.isInteger(n) && n > 0) : [];
+  if (order.length === 0) return res.status(400).json({ error: 'order must be a non-empty array of image ids' });
+
+  const rows = await db.prepare('SELECT id FROM property_images WHERE property_id = ?').all(property.id);
+  const owned = new Set(rows.map(r => r.id));
+  for (const id of order) {
+    if (!owned.has(id)) return res.status(400).json({ error: `Image ${id} does not belong to this listing` });
+  }
+
+  for (let i = 0; i < order.length; i++) {
+    await db.prepare('UPDATE property_images SET sort_order = ? WHERE id = ? AND property_id = ?').run(i, order[i], property.id);
+  }
+
+  const images = await db.prepare('SELECT id, url, thumb_url, alt, sort_order, width, height, is_hero FROM property_images WHERE property_id = ? ORDER BY sort_order ASC, id ASC').all(property.id);
+  res.json(images);
+});
+
+router.put('/:id/images/:imageId/hero', authenticate, propertyOwnershipCheck, async (req, res) => {
+  const db = getDb();
+  const property = req.property;
+  const imageId = parseInt(req.params.imageId);
+  if (!Number.isInteger(imageId) || imageId <= 0) return res.status(404).json({ error: 'Image not found' });
+
+  const image = await db.prepare('SELECT * FROM property_images WHERE id = ? AND property_id = ?').get(imageId, property.id);
+  if (!image) return res.status(404).json({ error: 'Image not found' });
+
+  await db.prepare('UPDATE property_images SET is_hero = 0 WHERE property_id = ?').run(property.id);
+  await db.prepare('UPDATE property_images SET is_hero = 1 WHERE id = ? AND property_id = ?').run(imageId, property.id);
+
+  const images = await db.prepare('SELECT id, url, thumb_url, alt, sort_order, width, height, is_hero FROM property_images WHERE property_id = ? ORDER BY sort_order ASC, id ASC').all(property.id);
+  res.json(images);
+});
+
+router.delete('/:id/images/:imageId', authenticate, propertyOwnershipCheck, async (req, res) => {
+  const db = getDb();
+  const property = req.property;
+  const imageId = parseInt(req.params.imageId);
+  if (!Number.isInteger(imageId) || imageId <= 0) return res.status(404).json({ error: 'Image not found' });
+
+  const image = await db.prepare('SELECT * FROM property_images WHERE id = ? AND property_id = ?').get(imageId, property.id);
+  if (!image) return res.status(404).json({ error: 'Image not found' });
+
+  await db.prepare('DELETE FROM property_images WHERE id = ?').run(imageId);
+  removeImageFiles(image);
+
+  if (image.is_hero) {
+    const nextHero = await db.prepare('SELECT id FROM property_images WHERE property_id = ? ORDER BY sort_order ASC, id ASC LIMIT 1').get(property.id);
+    if (nextHero) {
+      await db.prepare('UPDATE property_images SET is_hero = 1 WHERE id = ?').run(nextHero.id);
+    }
+  }
+
+  res.json({ message: 'Image deleted' });
+});
+
 router.get('/public/:shortCode', publicFormLimiter, async (req, res) => {
   const db = getDb();
   const code = req.params.shortCode;
@@ -294,7 +530,9 @@ router.get('/public/:shortCode', publicFormLimiter, async (req, res) => {
   const property = await db.prepare(`
     SELECT p.id, p.short_code, p.address, p.suburb, p.city, p.description, p.asking_price,
            p.bedrooms, p.bathrooms, p.floor_area, p.land_area, p.hero_image_url, p.status,
-           a.name AS agent_name
+           p.latitude, p.longitude, p.legal_description,
+           p.land_area_m2, p.parcel_titles, p.tenure_type,
+           a.name AS agent_name, a.email AS agent_email, a.phone AS agent_phone
     FROM properties p
     JOIN agents a ON a.id = p.agent_id
     WHERE p.short_code = ?
@@ -304,8 +542,32 @@ router.get('/public/:shortCode', publicFormLimiter, async (req, res) => {
 
   const documents = await db.prepare('SELECT id, kind, label FROM property_documents WHERE property_id = ? ORDER BY uploaded_at DESC').all(property.id);
 
+  let images = await db.prepare('SELECT id, url, thumb_url, alt, sort_order, width, height, is_hero FROM property_images WHERE property_id = ? ORDER BY is_hero DESC, sort_order ASC, id ASC').all(property.id);
+
+  if (images.length === 0 && property.hero_image_url) {
+    images = [{
+      id: null,
+      url: property.hero_image_url,
+      thumb_url: property.hero_image_url,
+      alt: null,
+      sort_order: 0,
+      width: null,
+      height: null,
+      is_hero: 1,
+    }];
+  }
+
+  let nearby_schools = [];
+  if (property.latitude != null && property.longitude != null) {
+    try {
+      nearby_schools = getNearbySchools(property.latitude, property.longitude);
+    } catch (err) {
+      console.error('Nearby schools lookup failed:', err.message);
+    }
+  }
+
   const { status, ...publicProperty } = property;
-  res.json({ ...publicProperty, documents });
+  res.json({ ...publicProperty, documents, images, nearby_schools });
 });
 
 router.post('/public/:shortCode/lead', publicFormLimiter, async (req, res) => {
@@ -364,6 +626,7 @@ router.post('/public/:shortCode/lead', publicFormLimiter, async (req, res) => {
   }
 
   sendDocPackToLead({
+    agentId: property.agent_id,
     to: email,
     leadName: name,
     property,

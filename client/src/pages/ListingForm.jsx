@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import AddressAutocomplete from '../components/AddressAutocomplete';
+import ListingSkeleton from '../components/ListingSkeleton';
+import PhotoManager from '../components/PhotoManager';
 
 const EMPTY = {
   address: '',
@@ -14,6 +17,12 @@ const EMPTY = {
   land_area: '',
   status: 'active',
   hero_image_url: '',
+  latitude: null,
+  longitude: null,
+  legal_description: '',
+  land_area_m2: null,
+  parcel_titles: '',
+  tenure_type: '',
 };
 
 export default function ListingForm() {
@@ -27,11 +36,17 @@ export default function ListingForm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [heroPreviewError, setHeroPreviewError] = useState(false);
+  const [images, setImages] = useState([]);
 
   useEffect(() => {
     if (!isEdit) return;
+    let cancelled = false;
     api(`/api/listings/${id}`)
       .then(data => {
+        if (cancelled) return;
+        setImages(Array.isArray(data.images) ? data.images : []);
         setForm({
           address: data.address || '',
           suburb: data.suburb || '',
@@ -44,15 +59,58 @@ export default function ListingForm() {
           land_area: data.land_area ?? '',
           status: data.status || 'active',
           hero_image_url: data.hero_image_url || '',
+          latitude: data.latitude ?? null,
+          longitude: data.longitude ?? null,
+          legal_description: data.legal_description || '',
+          land_area_m2: data.land_area_m2 ?? null,
+          parcel_titles: data.parcel_titles || '',
+          tenure_type: data.tenure_type || '',
         });
       })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [id]);
+      .catch(err => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id, isEdit, api]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
 
   const update = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
     setSaved(false);
+    setDirty(true);
+    if (field === 'hero_image_url') setHeroPreviewError(false);
+  };
+
+  const handleAddressSelect = (picked) => {
+    setForm(prev => ({
+      ...prev,
+      address: picked.address,
+      suburb: picked.suburb || prev.suburb,
+      city: picked.city || prev.city,
+      latitude: picked.latitude,
+      longitude: picked.longitude,
+      legal_description: picked.legal_description || prev.legal_description,
+      land_area:
+        picked.land_area_m2 != null && (prev.land_area === '' || prev.land_area == null)
+          ? picked.land_area_m2
+          : prev.land_area,
+      land_area_m2: picked.land_area_m2 ?? prev.land_area_m2,
+      parcel_titles:
+        Array.isArray(picked.title_references) && picked.title_references.length
+          ? picked.title_references.join(', ')
+          : prev.parcel_titles,
+      tenure_type: picked.tenure_type || prev.tenure_type,
+    }));
+    setSaved(false);
+    setDirty(true);
   };
 
   const handleSubmit = async (e) => {
@@ -76,6 +134,12 @@ export default function ListingForm() {
       asking_price: form.asking_price.trim(),
       status: form.status,
       hero_image_url: form.hero_image_url.trim(),
+      legal_description: form.legal_description.trim(),
+      latitude: form.latitude,
+      longitude: form.longitude,
+      land_area_m2: form.land_area_m2 ?? null,
+      parcel_titles: form.parcel_titles ? form.parcel_titles.trim() : null,
+      tenure_type: form.tenure_type || null,
     };
     for (const f of ['bedrooms', 'bathrooms', 'floor_area', 'land_area']) {
       const v = form[f];
@@ -96,9 +160,11 @@ export default function ListingForm() {
       if (isEdit) {
         await api(`/api/listings/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setSaved(true);
+        setDirty(false);
         setTimeout(() => setSaved(false), 4000);
       } else {
         const created = await api('/api/listings', { method: 'POST', body: JSON.stringify(payload) });
+        setDirty(false);
         navigate(`/listings/${created.id}`);
       }
     } catch (err) {
@@ -109,12 +175,11 @@ export default function ListingForm() {
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-16">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
+    return <ListingSkeleton variant="form" />;
   }
+
+  const heroUrl = form.hero_image_url.trim();
+  const heroPreviewable = heroUrl && /^https?:\/\//i.test(heroUrl) && !heroPreviewError;
 
   return (
     <div className="max-w-3xl">
@@ -146,18 +211,35 @@ export default function ListingForm() {
         </div>
       )}
 
+      {isEdit && (
+        <div className="card mb-6">
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold text-slate-900">Photos</h2>
+            <p className="text-xs text-slate-500 mt-0.5">The cover photo shows first on the public listing. Drag to reorder.</p>
+          </div>
+          <PhotoManager
+            listingId={id}
+            images={images}
+            onChange={setImages}
+          />
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="card space-y-5">
+        {!isEdit && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 text-sm">
+            Create the listing first, then come back to add photos.
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="address">Address *</label>
-          <input
-            id="address"
-            className="input"
+          <AddressAutocomplete
             value={form.address}
-            onChange={e => update('address', e.target.value)}
-            maxLength={200}
-            required
-            placeholder="12 Kauri Street"
+            onChange={v => update('address', v)}
+            onSelect={handleAddressSelect}
+            placeholder="Start typing — e.g. 99 Queen Street"
           />
+          <p className="text-xs text-slate-500 mt-1">Type 3+ characters to see NZ address suggestions. Suburb, city, land area and legal description auto-fill when you pick one.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -196,6 +278,19 @@ export default function ListingForm() {
             maxLength={5000}
             placeholder="Character, features, renovations, location highlights..."
           />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="legal_description">Legal description</label>
+          <input
+            id="legal_description"
+            className="input"
+            value={form.legal_description}
+            onChange={e => update('legal_description', e.target.value)}
+            maxLength={500}
+            placeholder='e.g. "Lot 2 Deposited Plan 123456"'
+          />
+          <p className="text-xs text-slate-500 mt-1">Auto-filled from LINZ when you pick an address. Editable.</p>
         </div>
 
         <div>
@@ -274,7 +369,7 @@ export default function ListingForm() {
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="hero_image_url">Hero image URL</label>
+            <label className="label" htmlFor="hero_image_url">Hero image URL (fallback)</label>
             <input
               id="hero_image_url"
               type="url"
@@ -284,6 +379,21 @@ export default function ListingForm() {
               maxLength={500}
               placeholder="https://..."
             />
+            <p className="text-xs text-slate-500 mt-1">Only shown if no photos uploaded above.</p>
+            {heroUrl && (
+              heroPreviewable ? (
+                <div className="mt-2 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+                  <img
+                    src={heroUrl}
+                    alt="Hero preview"
+                    className="w-full max-h-32 object-cover"
+                    onError={() => setHeroPreviewError(true)}
+                  />
+                </div>
+              ) : heroPreviewError ? (
+                <p className="text-xs text-amber-700 mt-2">Could not load image — check the URL.</p>
+              ) : null
+            )}
           </div>
         </div>
 
