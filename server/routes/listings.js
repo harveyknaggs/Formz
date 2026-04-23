@@ -8,7 +8,7 @@ const { authenticate } = require('../middleware/auth');
 const { publicFormLimiter } = require('../middleware/rateLimit');
 const { uploadPropertyDoc, uploadPropertyImage } = require('../middleware/upload');
 const { isValidEmail } = require('../utils/validators');
-const { sendLeadNotification, sendDocPackToLead } = require('../services/email');
+const { sendLeadNotification, sendDocPackToLead, sendRegisterInterestConfirmation } = require('../services/email');
 const linz = require('../services/linz');
 const { getNearbySchools } = require('../services/schools');
 const { processPropertyImage, removeImageFiles } = require('../services/imagePipeline');
@@ -24,6 +24,7 @@ const UPDATABLE_FIELDS = ['address', 'suburb', 'city', 'description', 'asking_pr
 const ALLOWED_TENURES = ['freehold', 'leasehold', 'cross_lease', 'unit_title', 'unknown'];
 const ALLOWED_SALE_METHODS = ['price', 'by_negotiation', 'auction', 'tender', 'deadline_sale'];
 const ALLOWED_CONSTRUCTION = ['weatherboard', 'brick', 'plaster', 'mixed', 'other'];
+const ALLOWED_LEAD_INTENTS = ['doc_request', 'register_interest'];
 
 async function generateUniqueShortCode(db) {
   for (let i = 0; i < 10; i++) {
@@ -741,17 +742,24 @@ router.post('/public/:shortCode/lead', publicFormLimiter, async (req, res) => {
     phone = p || null;
   }
 
+  let intent = 'doc_request';
+  if (body.intent !== undefined && body.intent !== null && body.intent !== '') {
+    if (typeof body.intent !== 'string' || !ALLOWED_LEAD_INTENTS.includes(body.intent)) {
+      return res.status(400).json({ error: `intent must be one of: ${ALLOWED_LEAD_INTENTS.join(', ')}` });
+    }
+    intent = body.intent;
+  }
+
   const ip = req.ip;
   const userAgent = (req.get('User-Agent') || '').slice(0, 500);
 
   const result = await db.prepare(`
-    INSERT INTO property_leads (property_id, agent_id, name, email, phone, ip, user_agent)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(property.id, property.agent_id, name, email, phone, ip, userAgent);
+    INSERT INTO property_leads (property_id, agent_id, name, email, phone, ip, user_agent, intent)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(property.id, property.agent_id, name, email, phone, ip, userAgent, intent);
 
   const leadId = result.lastInsertRowid;
-  const lead = { id: leadId, name, email, phone };
-  const documents = await db.prepare('SELECT id, kind, label FROM property_documents WHERE property_id = ? ORDER BY uploaded_at DESC').all(property.id);
+  const lead = { id: leadId, name, email, phone, intent };
 
   if (property.agent_email) {
     sendLeadNotification({
@@ -763,6 +771,23 @@ router.post('/public/:shortCode/lead', publicFormLimiter, async (req, res) => {
     }).catch(err => console.error('sendLeadNotification failed:', err.message));
   }
 
+  if (intent === 'register_interest') {
+    sendRegisterInterestConfirmation({
+      agentId: property.agent_id,
+      to: email,
+      leadName: name,
+      property,
+    }).catch(err => console.error('sendRegisterInterestConfirmation failed:', err.message));
+
+    return res.status(201).json({
+      message: "Thanks — we'll let you know about open homes and price changes.",
+      lead_id: leadId,
+      intent,
+    });
+  }
+
+  const documents = await db.prepare('SELECT id, kind, label FROM property_documents WHERE property_id = ? ORDER BY uploaded_at DESC').all(property.id);
+
   sendDocPackToLead({
     agentId: property.agent_id,
     to: email,
@@ -772,7 +797,7 @@ router.post('/public/:shortCode/lead', publicFormLimiter, async (req, res) => {
     leadId
   }).catch(err => console.error('sendDocPackToLead failed:', err.message));
 
-  res.status(201).json({ message: 'Thanks — check your email for the documents.', lead_id: leadId });
+  res.status(201).json({ message: 'Thanks — check your email for the documents.', lead_id: leadId, intent });
 });
 
 router.get('/download/:leadId/:docId', async (req, res) => {

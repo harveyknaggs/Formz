@@ -223,7 +223,8 @@ async function applySqliteSchema() {
     'ALTER TABLE properties ADD COLUMN youtube_url TEXT',
     'ALTER TABLE properties ADD COLUMN floor_plan_url TEXT',
     'ALTER TABLE properties ADD COLUMN sale_method TEXT',
-    'ALTER TABLE properties ADD COLUMN sale_deadline_at DATETIME'
+    'ALTER TABLE properties ADD COLUMN sale_deadline_at DATETIME',
+    "ALTER TABLE property_leads ADD COLUMN intent TEXT DEFAULT 'doc_request'"
   ]) {
     try { await db.exec(sql); } catch {}
   }

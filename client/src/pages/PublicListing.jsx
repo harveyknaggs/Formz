@@ -2,7 +2,17 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import ListingSkeleton from '../components/ListingSkeleton';
 import PhotoGallery from '../components/PhotoGallery';
+import ListingMap from '../components/ListingMap';
+import ShareRow from '../components/ShareRow';
 import { buildOpenHomeIcs, downloadIcs } from '../utils/ics';
+
+const TENURE_LABELS = {
+  freehold: 'Freehold',
+  leasehold: 'Leasehold',
+  cross_lease: 'Cross Lease',
+  unit_title: 'Unit Title',
+  unknown: 'Unknown',
+};
 
 const KIND_LABELS = {
   lim: 'LIM Report',
@@ -89,6 +99,7 @@ export default function PublicListing() {
   const [notFound, setNotFound] = useState(false);
 
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
+  const [mode, setMode] = useState('docs'); // 'docs' | 'interest'
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(null);
@@ -137,8 +148,9 @@ export default function PublicListing() {
       const body = {
         name: form.name.trim(),
         email: form.email.trim(),
+        intent: mode === 'interest' ? 'register_interest' : 'doc_request',
       };
-      if (form.phone.trim()) body.phone = form.phone.trim();
+      if (mode !== 'interest' && form.phone.trim()) body.phone = form.phone.trim();
 
       const res = await fetch(`/api/listings/public/${shortCode}/lead`, {
         method: 'POST',
@@ -152,7 +164,7 @@ export default function PublicListing() {
         }
         throw new Error(data.error || 'Something went wrong. Please try again.');
       }
-      setSubmitted({ name: body.name, email: body.email });
+      setSubmitted({ name: body.name, email: body.email, intent: body.intent });
     } catch (err) {
       setSubmitError(err.message);
     } finally {
@@ -435,7 +447,10 @@ export default function PublicListing() {
           </div>
         )}
 
-        {/* Street View */}
+        {/* Location map (free — OpenStreetMap) */}
+        <ListingMap latitude={listing.latitude} longitude={listing.longitude} address={listing.address} />
+
+        {/* Optional Google Street View (only if API key is set) */}
         {listing.latitude != null && listing.longitude != null && import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-6">
             <h2 className="text-sm font-semibold text-slate-900 mb-3">Street view</h2>
@@ -451,6 +466,47 @@ export default function PublicListing() {
             <p className="text-xs text-slate-500 mt-2">Imagery provided by Google. May not reflect current condition.</p>
           </div>
         )}
+
+        {/* Title & land — collapsible legal info */}
+        {(listing.legal_description || listing.parcel_titles || listing.tenure_type) && (
+          <details className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-6 group">
+            <summary className="flex items-center justify-between cursor-pointer select-none list-none">
+              <h2 className="text-sm font-semibold text-slate-900">Title &amp; land</h2>
+              <svg className="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+              </svg>
+            </summary>
+            <dl className="mt-4 space-y-3 text-sm">
+              {listing.tenure_type && (
+                <div className="flex gap-3">
+                  <dt className="w-32 shrink-0 text-slate-500">Tenure</dt>
+                  <dd className="text-slate-800 font-medium">{TENURE_LABELS[listing.tenure_type] || listing.tenure_type}</dd>
+                </div>
+              )}
+              {listing.legal_description && (
+                <div className="flex gap-3">
+                  <dt className="w-32 shrink-0 text-slate-500">Legal description</dt>
+                  <dd className="text-slate-800 font-medium break-words">{listing.legal_description}</dd>
+                </div>
+              )}
+              {listing.parcel_titles && (
+                <div className="flex gap-3">
+                  <dt className="w-32 shrink-0 text-slate-500">Title reference</dt>
+                  <dd className="text-slate-800 font-medium break-words">{listing.parcel_titles}</dd>
+                </div>
+              )}
+              {listing.land_area_m2 && !listing.land_area && (
+                <div className="flex gap-3">
+                  <dt className="w-32 shrink-0 text-slate-500">Parcel area</dt>
+                  <dd className="text-slate-800 font-medium">{Math.round(Number(listing.land_area_m2)).toLocaleString()} m² (LINZ)</dd>
+                </div>
+              )}
+            </dl>
+          </details>
+        )}
+
+        {/* Share */}
+        <ShareRow url={typeof window !== 'undefined' ? window.location.href : ''} title={listing.address} />
 
         {/* Nearby schools */}
         {Array.isArray(listing.nearby_schools) && listing.nearby_schools.length > 0 && (
@@ -519,20 +575,66 @@ export default function PublicListing() {
                 <h2 className="text-lg font-semibold text-green-900">
                   Thanks, {submitted.name}!
                 </h2>
-                <p className="text-green-800 mt-1">
-                  We've emailed the document links to <strong>{submitted.email}</strong>.
-                </p>
-                <p className="text-sm text-green-700 mt-2">
-                  If you don't see the email in 5 minutes, please check your spam folder.
-                </p>
+                {submitted.intent === 'register_interest' ? (
+                  <>
+                    <p className="text-green-800 mt-1">
+                      We've noted your interest at <strong>{submitted.email}</strong>.
+                    </p>
+                    <p className="text-sm text-green-700 mt-2">
+                      We'll let you know about open homes and price changes. When you're ready to see the full document pack, come back and hit "Request documents".
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-green-800 mt-1">
+                      We've emailed the document links to <strong>{submitted.email}</strong>.
+                    </p>
+                    <p className="text-sm text-green-700 mt-2">
+                      If you don't see the email in 5 minutes, please check your spam folder.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 mb-6">
-            <h2 className="text-xl font-semibold text-slate-900">Request documents</h2>
+            <div className="flex gap-2 mb-5" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'docs'}
+                onClick={() => setMode('docs')}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  mode === 'docs'
+                    ? 'bg-primary text-white shadow'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Request documents
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'interest'}
+                onClick={() => setMode('interest')}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  mode === 'interest'
+                    ? 'bg-primary text-white shadow'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Just register interest
+              </button>
+            </div>
+
+            <h2 className="text-xl font-semibold text-slate-900">
+              {mode === 'interest' ? 'Register your interest' : 'Request documents'}
+            </h2>
             <p className="text-slate-500 text-sm mt-1 mb-5">
-              Leave your details and we'll email you the full document pack.
+              {mode === 'interest'
+                ? "Get notified about open homes and price changes — no phone number needed."
+                : "Leave your details and we'll email you the full document pack (LIM, title, etc.)."}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -560,24 +662,28 @@ export default function PublicListing() {
                   autoComplete="email"
                 />
               </div>
-              <div>
-                <label className="label" htmlFor="lead-phone">Phone</label>
-                <input
-                  id="lead-phone"
-                  className="input"
-                  value={form.phone}
-                  onChange={e => setForm({ ...form, phone: e.target.value })}
-                  autoComplete="tel"
-                  placeholder="+64 21 ..."
-                />
-              </div>
+              {mode === 'docs' && (
+                <div>
+                  <label className="label" htmlFor="lead-phone">Phone</label>
+                  <input
+                    id="lead-phone"
+                    className="input"
+                    value={form.phone}
+                    onChange={e => setForm({ ...form, phone: e.target.value })}
+                    autoComplete="tel"
+                    placeholder="+64 21 ..."
+                  />
+                </div>
+              )}
 
               {submitError && (
                 <p className="text-sm text-red-600">{submitError}</p>
               )}
 
               <button type="submit" disabled={submitting} className="btn-primary w-full justify-center">
-                {submitting ? 'Sending...' : 'Request documents'}
+                {submitting
+                  ? 'Sending...'
+                  : mode === 'interest' ? 'Register interest' : 'Request documents'}
               </button>
 
               <p className="text-xs text-slate-500 text-center">

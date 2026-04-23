@@ -356,4 +356,27 @@ async function sendDocPackToLead({ agentId, to, leadName, property, documents, l
   });
 }
 
-module.exports = { sendFormLink, sendSubmissionNotification, sendConfirmation, sendLeadNotification, sendDocPackToLead };
+async function sendRegisterInterestConfirmation({ agentId, to, leadName, property }) {
+  const addr = property.address || 'the listing';
+  const subject = `Thanks for your interest — ${addr}`;
+
+  await sendEmail(agentId, {
+    to,
+    subject,
+    text: `Hi ${leadName},\n\nThanks for registering interest in ${addr}. We'll let you know about open homes, price changes and anything else relevant to this listing.\n\nIf you'd like the full document pack (LIM, title, builders reports), just reply to this email or visit the listing page again.\n\nKind regards,\nFormz`,
+    html: `
+      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px;">
+          <h2 style="color: #1e3a5f; margin: 0 0 8px;">Thanks for your interest</h2>
+          <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">Hi ${leadName},</p>
+          <p style="color: #334155; font-size: 15px; margin: 0 0 12px;">We've noted your interest in <strong>${addr}</strong>. We'll let you know about open homes, price changes and anything else relevant to this listing.</p>
+          <p style="color: #64748b; font-size: 14px; margin: 16px 0 0;">If you'd like the full document pack (LIM, title, builders reports), just reply to this email or visit the listing page again and hit "Request documents".</p>
+        </div>
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 24px;">Formz</p>
+      </div>
+    `,
+    type: 'register_interest'
+  });
+}
+
+module.exports = { sendFormLink, sendSubmissionNotification, sendConfirmation, sendLeadNotification, sendDocPackToLead, sendRegisterInterestConfirmation };
