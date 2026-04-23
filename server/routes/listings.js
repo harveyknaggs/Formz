@@ -20,8 +20,10 @@ const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 5);
 
 const ALLOWED_KINDS = ['lim', 'title', 'builders_report', 'other'];
 const ALLOWED_STATUS = ['active', 'draft', 'sold', 'withdrawn'];
-const UPDATABLE_FIELDS = ['address', 'suburb', 'city', 'description', 'asking_price', 'bedrooms', 'bathrooms', 'floor_area', 'land_area', 'status', 'hero_image_url', 'latitude', 'longitude', 'legal_description', 'land_area_m2', 'parcel_titles', 'tenure_type'];
+const UPDATABLE_FIELDS = ['address', 'suburb', 'city', 'description', 'asking_price', 'bedrooms', 'bathrooms', 'floor_area', 'land_area', 'status', 'hero_image_url', 'latitude', 'longitude', 'legal_description', 'land_area_m2', 'parcel_titles', 'tenure_type', 'year_built', 'construction_type', 'chattels', 'rates_annual', 'capital_value', 'matterport_url', 'youtube_url', 'floor_plan_url', 'sale_method', 'sale_deadline_at'];
 const ALLOWED_TENURES = ['freehold', 'leasehold', 'cross_lease', 'unit_title', 'unknown'];
+const ALLOWED_SALE_METHODS = ['price', 'by_negotiation', 'auction', 'tender', 'deadline_sale'];
+const ALLOWED_CONSTRUCTION = ['weatherboard', 'brick', 'plaster', 'mixed', 'other'];
 
 async function generateUniqueShortCode(db) {
   for (let i = 0; i < 10; i++) {
@@ -80,6 +82,30 @@ function asTenure(v) {
   if (typeof v !== 'string') return undefined;
   if (!ALLOWED_TENURES.includes(v)) return undefined;
   return v;
+}
+
+function asEnum(v, allowed) {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string') return undefined;
+  if (!allowed.includes(v)) return undefined;
+  return v;
+}
+
+function asYear(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return undefined;
+  const currentYear = new Date().getFullYear();
+  if (n < 1800 || n > currentYear + 5) return undefined;
+  return n;
+}
+
+function asIsoTimestamp(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string') return undefined;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString();
 }
 
 router.get('/', authenticate, async (req, res) => {
@@ -156,12 +182,42 @@ router.post('/', authenticate, async (req, res) => {
   const tenureType = asTenure(body.tenure_type);
   if (tenureType === undefined) return res.status(400).json({ error: `tenure_type must be one of: ${ALLOWED_TENURES.join(', ')}` });
 
+  const yearBuilt = asYear(body.year_built);
+  if (yearBuilt === undefined) return res.status(400).json({ error: 'year_built must be a year between 1800 and 5 years from now' });
+
+  const constructionType = asEnum(body.construction_type, ALLOWED_CONSTRUCTION);
+  if (constructionType === undefined) return res.status(400).json({ error: `construction_type must be one of: ${ALLOWED_CONSTRUCTION.join(', ')}` });
+
+  const chattels = asString(body.chattels, 2000);
+  if (chattels === undefined) return res.status(400).json({ error: 'chattels must be a string up to 2000 characters' });
+
+  const ratesAnnual = asString(body.rates_annual, 60);
+  if (ratesAnnual === undefined) return res.status(400).json({ error: 'rates_annual must be a string up to 60 characters' });
+
+  const capitalValue = asString(body.capital_value, 60);
+  if (capitalValue === undefined) return res.status(400).json({ error: 'capital_value must be a string up to 60 characters' });
+
+  const matterportUrl = asString(body.matterport_url, 500);
+  if (matterportUrl === undefined) return res.status(400).json({ error: 'matterport_url must be a string up to 500 characters' });
+
+  const youtubeUrl = asString(body.youtube_url, 500);
+  if (youtubeUrl === undefined) return res.status(400).json({ error: 'youtube_url must be a string up to 500 characters' });
+
+  const floorPlanUrl = asString(body.floor_plan_url, 500);
+  if (floorPlanUrl === undefined) return res.status(400).json({ error: 'floor_plan_url must be a string up to 500 characters' });
+
+  const saleMethod = asEnum(body.sale_method, ALLOWED_SALE_METHODS);
+  if (saleMethod === undefined) return res.status(400).json({ error: `sale_method must be one of: ${ALLOWED_SALE_METHODS.join(', ')}` });
+
+  const saleDeadlineAt = asIsoTimestamp(body.sale_deadline_at);
+  if (saleDeadlineAt === undefined) return res.status(400).json({ error: 'sale_deadline_at must be an ISO 8601 date/time' });
+
   const shortCode = await generateUniqueShortCode(db);
 
   const result = await db.prepare(`
-    INSERT INTO properties (agent_id, short_code, address, suburb, city, description, asking_price, bedrooms, bathrooms, floor_area, land_area, status, hero_image_url, latitude, longitude, legal_description, land_area_m2, parcel_titles, tenure_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.agent.id, shortCode, address, suburb, city, description, askingPrice, bedrooms, bathrooms, floorArea, landArea, status, heroImageUrl, latitude, longitude, legalDescription, landAreaM2, parcelTitles, tenureType);
+    INSERT INTO properties (agent_id, short_code, address, suburb, city, description, asking_price, bedrooms, bathrooms, floor_area, land_area, status, hero_image_url, latitude, longitude, legal_description, land_area_m2, parcel_titles, tenure_type, year_built, construction_type, chattels, rates_annual, capital_value, matterport_url, youtube_url, floor_plan_url, sale_method, sale_deadline_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.agent.id, shortCode, address, suburb, city, description, askingPrice, bedrooms, bathrooms, floorArea, landArea, status, heroImageUrl, latitude, longitude, legalDescription, landAreaM2, parcelTitles, tenureType, yearBuilt, constructionType, chattels, ratesAnnual, capitalValue, matterportUrl, youtubeUrl, floorPlanUrl, saleMethod, saleDeadlineAt);
 
   const row = await db.prepare('SELECT * FROM properties WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(row);
@@ -222,8 +278,9 @@ router.get('/:id', authenticate, async (req, res) => {
   const documents = await db.prepare('SELECT id, property_id, kind, label, file_path, mime_type, file_size, uploaded_at FROM property_documents WHERE property_id = ? ORDER BY uploaded_at DESC').all(id);
   const leads = await db.prepare('SELECT id, property_id, name, email, phone, ip, user_agent, created_at FROM property_leads WHERE property_id = ? ORDER BY created_at DESC').all(id);
   const images = await db.prepare('SELECT id, url, thumb_url, alt, sort_order, width, height, is_hero FROM property_images WHERE property_id = ? ORDER BY sort_order ASC, id ASC').all(id);
+  const open_homes = await db.prepare('SELECT id, property_id, start_at, end_at, created_at FROM property_open_homes WHERE property_id = ? ORDER BY start_at ASC').all(id);
 
-  res.json({ ...property, documents, leads, images });
+  res.json({ ...property, documents, leads, images, open_homes });
 });
 
 router.put('/:id', authenticate, async (req, res) => {
@@ -293,6 +350,38 @@ router.put('/:id', authenticate, async (req, res) => {
     updates.tenure_type = v;
   }
 
+  if (body.year_built !== undefined) {
+    const v = asYear(body.year_built);
+    if (v === undefined) return res.status(400).json({ error: 'year_built must be a year between 1800 and 5 years from now' });
+    updates.year_built = v;
+  }
+
+  if (body.construction_type !== undefined) {
+    const v = asEnum(body.construction_type, ALLOWED_CONSTRUCTION);
+    if (v === undefined) return res.status(400).json({ error: `construction_type must be one of: ${ALLOWED_CONSTRUCTION.join(', ')}` });
+    updates.construction_type = v;
+  }
+
+  for (const [field, max] of [['chattels', 2000], ['rates_annual', 60], ['capital_value', 60], ['matterport_url', 500], ['youtube_url', 500], ['floor_plan_url', 500]]) {
+    if (body[field] !== undefined) {
+      const v = asString(body[field], max);
+      if (v === undefined) return res.status(400).json({ error: `${field} must be a string up to ${max} characters` });
+      updates[field] = v;
+    }
+  }
+
+  if (body.sale_method !== undefined) {
+    const v = asEnum(body.sale_method, ALLOWED_SALE_METHODS);
+    if (v === undefined) return res.status(400).json({ error: `sale_method must be one of: ${ALLOWED_SALE_METHODS.join(', ')}` });
+    updates.sale_method = v;
+  }
+
+  if (body.sale_deadline_at !== undefined) {
+    const v = asIsoTimestamp(body.sale_deadline_at);
+    if (v === undefined) return res.status(400).json({ error: 'sale_deadline_at must be an ISO 8601 date/time' });
+    updates.sale_deadline_at = v;
+  }
+
   const keys = Object.keys(updates).filter(k => UPDATABLE_FIELDS.includes(k));
   if (keys.length === 0) return res.status(400).json({ error: 'No updatable fields provided' });
 
@@ -315,6 +404,7 @@ router.delete('/:id', authenticate, async (req, res) => {
   await db.prepare('DELETE FROM property_leads WHERE property_id = ?').run(id);
   await db.prepare('DELETE FROM property_documents WHERE property_id = ?').run(id);
   await db.prepare('DELETE FROM property_images WHERE property_id = ?').run(id);
+  await db.prepare('DELETE FROM property_open_homes WHERE property_id = ?').run(id);
   await db.prepare('DELETE FROM properties WHERE id = ?').run(id);
 
   const propDir = path.join(UPLOADS_DIR, 'properties', existing.short_code);
@@ -413,6 +503,45 @@ router.delete('/:id/documents/:docId', authenticate, async (req, res) => {
   }
 
   res.json({ message: 'Document deleted' });
+});
+
+router.post('/:id/open-homes', authenticate, propertyOwnershipCheck, async (req, res) => {
+  const db = getDb();
+  const property = req.property;
+  const body = req.body || {};
+
+  const startAt = asIsoTimestamp(body.start_at);
+  if (!startAt) return res.status(400).json({ error: 'start_at is required and must be a valid ISO 8601 date/time' });
+  if (startAt === undefined) return res.status(400).json({ error: 'start_at is invalid' });
+
+  const endAt = asIsoTimestamp(body.end_at);
+  if (!endAt) return res.status(400).json({ error: 'end_at is required and must be a valid ISO 8601 date/time' });
+  if (endAt === undefined) return res.status(400).json({ error: 'end_at is invalid' });
+
+  if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+    return res.status(400).json({ error: 'end_at must be after start_at' });
+  }
+
+  const result = await db.prepare(`
+    INSERT INTO property_open_homes (property_id, start_at, end_at)
+    VALUES (?, ?, ?)
+  `).run(property.id, startAt, endAt);
+
+  const row = await db.prepare('SELECT id, property_id, start_at, end_at, created_at FROM property_open_homes WHERE id = ?').get(result.lastInsertRowid);
+  res.status(201).json(row);
+});
+
+router.delete('/:id/open-homes/:openHomeId', authenticate, propertyOwnershipCheck, async (req, res) => {
+  const db = getDb();
+  const property = req.property;
+  const openHomeId = parseInt(req.params.openHomeId);
+  if (!Number.isInteger(openHomeId) || openHomeId <= 0) return res.status(404).json({ error: 'Open home not found' });
+
+  const row = await db.prepare('SELECT id FROM property_open_homes WHERE id = ? AND property_id = ?').get(openHomeId, property.id);
+  if (!row) return res.status(404).json({ error: 'Open home not found' });
+
+  await db.prepare('DELETE FROM property_open_homes WHERE id = ?').run(openHomeId);
+  res.json({ message: 'Open home deleted' });
 });
 
 router.post('/:id/images', authenticate, propertyOwnershipCheck, (req, res, next) => {
@@ -532,6 +661,8 @@ router.get('/public/:shortCode', publicFormLimiter, async (req, res) => {
            p.bedrooms, p.bathrooms, p.floor_area, p.land_area, p.hero_image_url, p.status,
            p.latitude, p.longitude, p.legal_description,
            p.land_area_m2, p.parcel_titles, p.tenure_type,
+           p.year_built, p.construction_type, p.chattels, p.rates_annual, p.capital_value,
+           p.matterport_url, p.youtube_url, p.floor_plan_url, p.sale_method, p.sale_deadline_at,
            a.name AS agent_name, a.email AS agent_email, a.phone AS agent_phone
     FROM properties p
     JOIN agents a ON a.id = p.agent_id
@@ -566,8 +697,15 @@ router.get('/public/:shortCode', publicFormLimiter, async (req, res) => {
     }
   }
 
+  const open_homes = await db.prepare(`
+    SELECT id, start_at, end_at
+    FROM property_open_homes
+    WHERE property_id = ? AND end_at > CURRENT_TIMESTAMP
+    ORDER BY start_at ASC
+  `).all(property.id);
+
   const { status, ...publicProperty } = property;
-  res.json({ ...publicProperty, documents, images, nearby_schools });
+  res.json({ ...publicProperty, documents, images, nearby_schools, open_homes });
 });
 
 router.post('/public/:shortCode/lead', publicFormLimiter, async (req, res) => {

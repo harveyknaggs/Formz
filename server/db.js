@@ -191,6 +191,15 @@ async function applySqliteSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_property_images_property_id ON property_images(property_id);
     CREATE INDEX IF NOT EXISTS idx_property_images_sort ON property_images(property_id, sort_order);
+    CREATE TABLE IF NOT EXISTS property_open_homes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      start_at DATETIME NOT NULL,
+      end_at DATETIME NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_property_open_homes_property_start ON property_open_homes(property_id, start_at);
   `);
 
   for (const sql of [
@@ -204,7 +213,17 @@ async function applySqliteSchema() {
     'ALTER TABLE properties ADD COLUMN legal_description TEXT',
     'ALTER TABLE properties ADD COLUMN land_area_m2 REAL',
     'ALTER TABLE properties ADD COLUMN parcel_titles TEXT',
-    'ALTER TABLE properties ADD COLUMN tenure_type TEXT'
+    'ALTER TABLE properties ADD COLUMN tenure_type TEXT',
+    'ALTER TABLE properties ADD COLUMN year_built INTEGER',
+    'ALTER TABLE properties ADD COLUMN construction_type TEXT',
+    'ALTER TABLE properties ADD COLUMN chattels TEXT',
+    'ALTER TABLE properties ADD COLUMN rates_annual TEXT',
+    'ALTER TABLE properties ADD COLUMN capital_value TEXT',
+    'ALTER TABLE properties ADD COLUMN matterport_url TEXT',
+    'ALTER TABLE properties ADD COLUMN youtube_url TEXT',
+    'ALTER TABLE properties ADD COLUMN floor_plan_url TEXT',
+    'ALTER TABLE properties ADD COLUMN sale_method TEXT',
+    'ALTER TABLE properties ADD COLUMN sale_deadline_at DATETIME'
   ]) {
     try { await db.exec(sql); } catch {}
   }
