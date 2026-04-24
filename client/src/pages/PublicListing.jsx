@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import ListingSkeleton from '../components/ListingSkeleton';
 import PhotoGallery from '../components/PhotoGallery';
-import ListingMap from '../components/ListingMap';
-import ShareRow from '../components/ShareRow';
 import { buildOpenHomeIcs, downloadIcs } from '../utils/ics';
+import './PublicListing.css';
 
 const TENURE_LABELS = {
   freehold: 'Freehold',
@@ -19,6 +18,13 @@ const KIND_LABELS = {
   title: 'Title',
   builders_report: "Builder's Report",
   other: 'Document',
+};
+
+const KIND_BLURB = {
+  lim: 'Land Information Memorandum — what the council knows about this property.',
+  title: 'Legal ownership records and registered interests.',
+  builders_report: 'Independent inspection of the property\'s condition.',
+  other: 'Supporting document supplied by the vendor.',
 };
 
 const SALE_METHOD_LABELS = {
@@ -62,7 +68,6 @@ function matterportEmbedUrl(url) {
   try {
     const u = new URL(url);
     if (!u.hostname.includes('matterport.com')) return null;
-    if (u.pathname.startsWith('/show')) return url;
     return url;
   } catch {
     return null;
@@ -92,6 +97,25 @@ function initialsFromName(name) {
   return parts.map(p => p[0]?.toUpperCase() || '').join('') || '?';
 }
 
+function parsePriceParts(price) {
+  if (!price) return null;
+  const str = String(price).trim();
+  const match = str.match(/^([^\d-]*)([\d,]+(?:\.\d+)?)(.*)$/);
+  if (!match) return { currency: '', number: str, suffix: '' };
+  return { currency: match[1].trim() || '$', number: match[2], suffix: match[3].trim() };
+}
+
+function osmEmbedSrc(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const offset = 0.004;
+  const bbox = [lng - offset, lat - offset * 0.6, lng + offset, lat + offset * 0.6].join(',');
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${lat},${lng}`;
+}
+
+function osmFullLink(lat, lng) {
+  return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`;
+}
+
 export default function PublicListing() {
   const { shortCode } = useParams();
   const [listing, setListing] = useState(null);
@@ -103,6 +127,8 @@ export default function PublicListing() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,23 +198,42 @@ export default function PublicListing() {
     }
   };
 
+  const handleCopyLink = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* no-op */
+    }
+  };
+
+  const handleBack = () => {
+    if (window.history.length > 1) window.history.back();
+  };
+
   if (loading) {
     return <ListingSkeleton variant="public" />;
   }
 
   if (notFound || !listing) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-        <div className="max-w-md text-center">
-          <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h1 className="text-xl font-semibold text-slate-900 mb-2">This listing is no longer available</h1>
-          <p className="text-slate-500 text-sm">
-            The link may have expired or the listing has been withdrawn. Please contact your agent for more information.
-          </p>
+      <div className="pl-notfound">
+        <div>
+          <h1>This listing is no longer available</h1>
+          <p>The link may have expired or the listing has been withdrawn. Please contact your agent for more information.</p>
         </div>
       </div>
     );
@@ -217,522 +262,603 @@ export default function PublicListing() {
   const youtubeSrc = youtubeEmbedUrl(listing.youtube_url);
   const hasMedia = matterportSrc || youtubeSrc || listing.floor_plan_url;
 
-  const handleAddToCalendar = (openHome) => {
-    const ics = buildOpenHomeIcs({
-      uid: `open-home-${openHome.id}@formz`,
-      start: openHome.start_at,
-      end: openHome.end_at,
-      summary: `Open home — ${listing.address}`,
-      location: [listing.address, locationLine].filter(Boolean).join(', '),
-      description: `Open home viewing for ${listing.address}.`,
-      url: typeof window !== 'undefined' ? window.location.href : undefined,
-    });
-    downloadIcs(`open-home-${listing.short_code}-${openHome.id}`, ics);
-  };
+  const lat = Number(listing.latitude);
+  const lng = Number(listing.longitude);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const mapSrc = hasCoords ? osmEmbedSrc(lat, lng) : null;
+  const mapLink = hasCoords ? osmFullLink(lat, lng) : null;
+
+  const hasTitleLand = listing.legal_description || listing.parcel_titles || listing.tenure_type || listing.land_area || listing.land_area_m2 || listing.floor_area || listing.year_built;
+  const hasInfoRow = hasCoords || hasTitleLand;
+
+  const priceParts = parsePriceParts(listing.asking_price);
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const shareBody = `${listing.address}\n${shareUrl}`;
+  const shareSubject = `Listing: ${listing.address}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-12">
-      <PhotoGallery images={galleryImages} address={listing.address} />
+    <div className="pl-root">
+      {galleryImages.length > 0 && <PhotoGallery images={galleryImages} address={listing.address} />}
 
-      <div className={`max-w-2xl mx-auto px-4 ${galleryImages.length > 1 ? 'mt-6' : '-mt-8 sm:-mt-12'} relative`}>
-        {/* Property card */}
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">
-            {listing.address}
-          </h1>
-          {locationLine && (
-            <p className="text-slate-500 mt-1">{locationLine}</p>
-          )}
+      <div className="pl-hero-wrap">
+        <div className="pl-hero-bg" />
 
-          {(saleBadgeText || listing.asking_price) && (
-            <div className="mt-6 pb-6 border-b border-slate-100">
-              {saleBadgeText && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold uppercase tracking-wide mb-2">
-                  {saleBadgeText}
-                </span>
-              )}
-              {listing.asking_price && (
-                <>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide">Asking price</p>
-                  <p className="text-3xl sm:text-4xl font-bold text-navy mt-1">{listing.asking_price}</p>
-                </>
+        <div className="pl-shell">
+
+          <div className="pl-topbar">
+            <div className="pl-left">
+              <button type="button" className="pl-back" onClick={handleBack}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"/>
+                  <polyline points="12 19 5 12 12 5"/>
+                </svg>
+                Back
+              </button>
+              {listing.suburb && (
+                <div className="pl-eyebrow-crumb">Listing · {listing.suburb}</div>
               )}
             </div>
-          )}
-
-          {/* Stats row */}
-          {(listing.bedrooms || listing.bathrooms || listing.floor_area || listing.land_area) && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
-              {listing.bedrooms != null && (
-                <PropertyStat
-                  icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12h18M5 12V8a2 2 0 012-2h10a2 2 0 012 2v4M3 12v6m18-6v6M7 12v-2a1 1 0 011-1h3a1 1 0 011 1v2" /></svg>}
-                  value={listing.bedrooms}
-                  label={listing.bedrooms === 1 ? 'Bedroom' : 'Bedrooms'}
-                />
-              )}
-              {listing.bathrooms != null && (
-                <PropertyStat
-                  icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 10h16M6 10V6a2 2 0 012-2h2a2 2 0 012 2M4 10v6a4 4 0 004 4h8a4 4 0 004-4v-6" /></svg>}
-                  value={listing.bathrooms}
-                  label={listing.bathrooms === 1 ? 'Bathroom' : 'Bathrooms'}
-                />
-              )}
-              {listing.floor_area != null && (
-                <PropertyStat
-                  icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h18v18H3V3zm0 6h18M9 3v18" /></svg>}
-                  value={`${listing.floor_area} m²`}
-                  label="Floor"
-                />
-              )}
-              {listing.land_area != null && (
-                <PropertyStat
-                  icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4h16v16H4z M4 12h16 M12 4v16" /></svg>}
-                  value={`${listing.land_area} m²`}
-                  label="Land"
-                />
-              )}
-            </div>
-          )}
-
-          {listing.description && (
-            <div className="mt-6 pt-6 border-t border-slate-100">
-              <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">
-                {listing.description}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Open homes */}
-        {openHomes.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Open homes</h2>
-            <ul className="space-y-2">
-              {openHomes.map(o => (
-                <li key={o.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-primary shrink-0">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <span className="font-medium text-slate-800 truncate">{formatOpenHome(o.start_at, o.end_at)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleAddToCalendar(o)}
-                    className="text-xs font-semibold text-primary hover:underline shrink-0"
-                  >
-                    Add to calendar
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* About the home */}
-        {hasAboutHome && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">About the home</h2>
-            {(listing.year_built || listing.construction_type) && (
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                {listing.year_built && (
-                  <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Year built</p>
-                    <p className="text-lg font-semibold text-slate-900 mt-0.5">{listing.year_built}</p>
-                  </div>
-                )}
-                {listing.construction_type && (
-                  <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wide">Construction</p>
-                    <p className="text-lg font-semibold text-slate-900 mt-0.5">
-                      {CONSTRUCTION_LABELS[listing.construction_type] || listing.construction_type}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-            {chattelsList.length > 0 && (
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Chattels &amp; extras</p>
-                <ul className="flex flex-wrap gap-2">
-                  {chattelsList.map((c, i) => (
-                    <li key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
-                      <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                      {c}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Costs */}
-        {hasCosts && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Costs</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {listing.rates_annual && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide">Rates (annual)</p>
-                  <p className="text-lg font-semibold text-slate-900 mt-0.5">{listing.rates_annual}</p>
-                </div>
-              )}
-              {listing.capital_value && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide">Capital value</p>
-                  <p className="text-lg font-semibold text-slate-900 mt-0.5">{listing.capital_value}</p>
-                </div>
-              )}
-            </div>
-            <p className="text-xs text-slate-500 mt-3">Figures supplied by the vendor or taken from the most recent rating assessment.</p>
-          </div>
-        )}
-
-        {/* Media — virtual tour / video / floor plan */}
-        {hasMedia && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6 space-y-5">
-            <h2 className="text-lg font-semibold text-slate-900">Virtual tour &amp; floor plan</h2>
-
-            {matterportSrc && (
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">3D tour</p>
-                <div className="aspect-video rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
-                  <iframe
-                    title="Matterport 3D tour"
-                    src={matterportSrc}
-                    allow="fullscreen; xr-spatial-tracking"
-                    allowFullScreen
-                    className="w-full h-full border-0"
-                  />
-                </div>
-              </div>
-            )}
-
-            {youtubeSrc && (
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Video</p>
-                <div className="aspect-video rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
-                  <iframe
-                    title="Property video"
-                    src={youtubeSrc}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                    className="w-full h-full border-0"
-                  />
-                </div>
-              </div>
-            )}
-
-            {listing.floor_plan_url && (
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Floor plan</p>
-                <a
-                  href={listing.floor_plan_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Open floor plan
-                </a>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Location map (free — OpenStreetMap) */}
-        <ListingMap latitude={listing.latitude} longitude={listing.longitude} address={listing.address} />
-
-        {/* Optional Google Street View (only if API key is set) */}
-        {listing.latitude != null && listing.longitude != null && import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-6">
-            <h2 className="text-sm font-semibold text-slate-900 mb-3">Street view</h2>
-            <div className="w-full h-64 sm:h-80 rounded-lg overflow-hidden bg-slate-100">
-              <iframe
-                title="Street view"
-                className="w-full h-full border-0"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.google.com/maps/embed/v1/streetview?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&location=${listing.latitude},${listing.longitude}`}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-2">Imagery provided by Google. May not reflect current condition.</p>
-          </div>
-        )}
-
-        {/* Title & land — collapsible legal info */}
-        {(listing.legal_description || listing.parcel_titles || listing.tenure_type) && (
-          <details className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-6 group">
-            <summary className="flex items-center justify-between cursor-pointer select-none list-none">
-              <h2 className="text-sm font-semibold text-slate-900">Title &amp; land</h2>
-              <svg className="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+            <button type="button" className="pl-save" onClick={() => setSaved(s => !s)}>
+              <svg viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
               </svg>
-            </summary>
-            <dl className="mt-4 space-y-3 text-sm">
-              {listing.tenure_type && (
-                <div className="flex gap-3">
-                  <dt className="w-32 shrink-0 text-slate-500">Tenure</dt>
-                  <dd className="text-slate-800 font-medium">{TENURE_LABELS[listing.tenure_type] || listing.tenure_type}</dd>
-                </div>
-              )}
-              {listing.legal_description && (
-                <div className="flex gap-3">
-                  <dt className="w-32 shrink-0 text-slate-500">Legal description</dt>
-                  <dd className="text-slate-800 font-medium break-words">{listing.legal_description}</dd>
-                </div>
-              )}
-              {listing.parcel_titles && (
-                <div className="flex gap-3">
-                  <dt className="w-32 shrink-0 text-slate-500">Title reference</dt>
-                  <dd className="text-slate-800 font-medium break-words">{listing.parcel_titles}</dd>
-                </div>
-              )}
-              {listing.land_area_m2 && !listing.land_area && (
-                <div className="flex gap-3">
-                  <dt className="w-32 shrink-0 text-slate-500">Parcel area</dt>
-                  <dd className="text-slate-800 font-medium">{Math.round(Number(listing.land_area_m2)).toLocaleString()} m² (LINZ)</dd>
-                </div>
-              )}
-            </dl>
-          </details>
-        )}
-
-        {/* Share */}
-        <ShareRow url={typeof window !== 'undefined' ? window.location.href : ''} title={listing.address} />
-
-        {/* Nearby schools */}
-        {Array.isArray(listing.nearby_schools) && listing.nearby_schools.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Nearby schools</h2>
-            <ul className="divide-y divide-slate-100">
-              {listing.nearby_schools.map((s, i) => (
-                <li key={i} className="flex items-center justify-between py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-slate-800 truncate">{s.name}</p>
-                    <p className="text-xs text-slate-500">{s.type}</p>
-                  </div>
-                  <span className="text-sm text-slate-600 font-medium shrink-0">{s.distance_km} km</span>
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-slate-500 mt-3">Based on straight-line distance. Check school zone maps for enrolment eligibility.</p>
+              {saved ? 'Saved' : 'Save'}
+            </button>
           </div>
-        )}
 
-        {/* Documents (locked) */}
-        {docs.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">
-              Documents ({docs.length})
-            </h2>
-            <ul className="space-y-2">
-              {docs.map(d => (
-                <li
-                  key={d.id}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 opacity-80"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          {/* HERO ROW */}
+          <div className="pl-hero-row">
+            <div className="pl-hero-card">
+              {saleBadgeText ? (
+                <span className="pl-listing-status">{saleBadgeText}</span>
+              ) : (
+                <span className="pl-listing-status">For sale</span>
+              )}
+              <h1 className="pl-addr">
+                {listing.suburb ? (
+                  <>{listing.address.replace(new RegExp(`,?\\s*${listing.suburb}\\s*$`, 'i'), '')}, <em>{listing.suburb}</em></>
+                ) : listing.address}
+              </h1>
+              {listing.city && <div className="pl-suburb">{listing.city}</div>}
+
+              {priceParts && (
+                <div className="pl-price-block">
+                  <div className="pl-price-label">Asking price</div>
+                  <div className="pl-price">
+                    <span className="pl-currency">{priceParts.currency || '$'}</span>
+                    {priceParts.number}
+                    {priceParts.suffix && <span style={{ fontSize: '24px', marginLeft: 6 }}>{priceParts.suffix}</span>}
+                  </div>
+                </div>
+              )}
+
+              {(listing.bedrooms != null || listing.bathrooms != null || listing.floor_area != null || listing.land_area != null) && (
+                <div className="pl-specs">
+                  {listing.bedrooms != null && (
+                    <div className="pl-spec">
+                      <div className="pl-spec-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2 9V6a2 2 0 0 1 2-2h4"/>
+                          <path d="M2 13v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5"/>
+                          <path d="M2 13h20"/>
+                          <path d="M14 4h4a2 2 0 0 1 2 2v3"/>
+                        </svg>
+                      </div>
+                      <div className="pl-spec-val">{listing.bedrooms}</div>
+                      <div className="pl-spec-label">{listing.bedrooms === 1 ? 'Bedroom' : 'Bedrooms'}</div>
+                    </div>
+                  )}
+                  {listing.bathrooms != null && (
+                    <div className="pl-spec">
+                      <div className="pl-spec-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+                          <path d="M4 10h16v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/>
+                          <line x1="6" y1="22" x2="6" y2="19"/>
+                          <line x1="18" y1="22" x2="18" y2="19"/>
+                        </svg>
+                      </div>
+                      <div className="pl-spec-val">{listing.bathrooms}</div>
+                      <div className="pl-spec-label">{listing.bathrooms === 1 ? 'Bathroom' : 'Bathrooms'}</div>
+                    </div>
+                  )}
+                  {listing.floor_area != null && (
+                    <div className="pl-spec">
+                      <div className="pl-spec-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/>
+                          <line x1="3" y1="9" x2="21" y2="9"/>
+                          <line x1="9" y1="21" x2="9" y2="9"/>
+                        </svg>
+                      </div>
+                      <div className="pl-spec-val">{listing.floor_area}<sup>m²</sup></div>
+                      <div className="pl-spec-label">Floor</div>
+                    </div>
+                  )}
+                  {listing.land_area != null && (
+                    <div className="pl-spec">
+                      <div className="pl-spec-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="3 3 21 3 19 21 5 21 3 3"/>
+                        </svg>
+                      </div>
+                      <div className="pl-spec-val">{Number(listing.land_area).toLocaleString()}<sup>m²</sup></div>
+                      <div className="pl-spec-label">Land</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {listing.description && <p className="pl-desc">{listing.description}</p>}
+            </div>
+
+            <div className="pl-hero-side">
+              {listing.agent_name && (
+                <div className="pl-agent-card">
+                  <div className="pl-agent-label">Presented by</div>
+                  <div className="pl-agent-head">
+                    <div className="pl-agent-avatar">{initialsFromName(listing.agent_name)}</div>
+                    <div>
+                      <div className="pl-agent-name">{listing.agent_name}</div>
+                      <div className="pl-agent-role">Listing agent</div>
+                    </div>
+                  </div>
+                  {(listing.agent_phone || listing.agent_email) && (
+                    <div className="pl-agent-contact">
+                      {listing.agent_phone && (
+                        <a href={`tel:${listing.agent_phone}`}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                          </svg>
+                          {listing.agent_phone}
+                        </a>
+                      )}
+                      {listing.agent_email && (
+                        <a href={`mailto:${listing.agent_email}`}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                            <polyline points="22,6 12,13 2,6"/>
+                          </svg>
+                          {listing.agent_email}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pl-share-card">
+                <div className="pl-share-title">Share this <em>listing</em></div>
+                <div className="pl-share-row">
+                  <a
+                    className="pl-share-btn"
+                    href={`https://wa.me/?text=${encodeURIComponent(shareBody)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                    </svg>
+                    WhatsApp
+                  </a>
+                  <a
+                    className="pl-share-btn"
+                    href={`sms:?body=${encodeURIComponent(shareBody)}`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Text
+                  </a>
+                  <a
+                    className="pl-share-btn"
+                    href={`mailto:?subject=${encodeURIComponent(shareSubject)}&body=${encodeURIComponent(shareBody)}`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                      <polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                    Email
+                  </a>
+                  <button type="button" className="pl-share-btn" onClick={handleCopyLink}>
+                    {copied ? (
+                      <>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 13l4 4L19 7"/>
+                        </svg>
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                        Copy link
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* MAIN GRID */}
+          <div className="pl-main-grid">
+            <div className="pl-main-left">
+
+              {hasInfoRow && (
+                <div className="pl-info-row">
+                  {hasCoords && (
+                    <div className="pl-panel p1">
+                      <div className="pl-panel-head">
+                        <span className="pl-title">Location <em>& map</em></span>
+                        {mapLink && (
+                          <a className="pl-link" href={mapLink} target="_blank" rel="noreferrer">
+                            Larger map
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="15 3 21 3 21 9"/>
+                              <line x1="10" y1="14" x2="21" y2="3"/>
+                            </svg>
+                          </a>
+                        )}
+                      </div>
+                      <div className="pl-map-wrap">
+                        <iframe
+                          title={`Map for ${listing.address}`}
+                          src={mapSrc}
+                          loading="lazy"
+                        />
+                      </div>
+                      <div className="pl-map-attr">© OpenStreetMap contributors</div>
+                    </div>
+                  )}
+
+                  {hasTitleLand && (
+                    <div className="pl-panel p2">
+                      <div className="pl-panel-head">
+                        <span className="pl-title">Title <em>& land</em></span>
+                      </div>
+                      {listing.tenure_type && (
+                        <div className="pl-td-row"><dt>Title</dt><dd>{TENURE_LABELS[listing.tenure_type] || listing.tenure_type}</dd></div>
+                      )}
+                      {listing.legal_description && (
+                        <div className="pl-td-row"><dt>Legal description</dt><dd>{listing.legal_description}</dd></div>
+                      )}
+                      {listing.parcel_titles && (
+                        <div className="pl-td-row"><dt>Title reference</dt><dd>{listing.parcel_titles}</dd></div>
+                      )}
+                      {listing.land_area != null ? (
+                        <div className="pl-td-row"><dt>Land area</dt><dd>{Number(listing.land_area).toLocaleString()} m²</dd></div>
+                      ) : listing.land_area_m2 ? (
+                        <div className="pl-td-row"><dt>Land area</dt><dd>{Math.round(Number(listing.land_area_m2)).toLocaleString()} m² <em style={{ fontStyle: 'italic', color: 'var(--pl-ink-muted)' }}>(LINZ)</em></dd></div>
+                      ) : null}
+                      {listing.floor_area != null && (
+                        <div className="pl-td-row"><dt>Floor area</dt><dd>{listing.floor_area} m²</dd></div>
+                      )}
+                      {listing.year_built && (
+                        <div className="pl-td-row"><dt>Year built</dt><dd>{listing.year_built}</dd></div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {openHomes.length > 0 && (
+                <div className="pl-panel p3">
+                  <div className="pl-panel-head">
+                    <span className="pl-title">Open <em>homes</em></span>
+                    <span className="pl-meta">{openHomes.length} scheduled</span>
+                  </div>
+                  {openHomes.map(o => (
+                    <div key={o.id} className="pl-oh-row">
+                      <div className="pl-oh-left">
+                        <div className="pl-oh-icon">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                        </div>
+                        <span className="pl-oh-text">{formatOpenHome(o.start_at, o.end_at)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="pl-oh-btn"
+                        onClick={() => {
+                          const ics = buildOpenHomeIcs({
+                            uid: `open-home-${o.id}@formz`,
+                            start: o.start_at,
+                            end: o.end_at,
+                            summary: `Open home — ${listing.address}`,
+                            location: [listing.address, locationLine].filter(Boolean).join(', '),
+                            description: `Open home viewing for ${listing.address}.`,
+                            url: shareUrl || undefined,
+                          });
+                          downloadIcs(`open-home-${listing.short_code}-${o.id}`, ics);
+                        }}
+                      >
+                        Add to calendar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {hasAboutHome && (
+                <div className="pl-panel p4">
+                  <div className="pl-panel-head">
+                    <span className="pl-title">About the <em>home</em></span>
+                  </div>
+                  {(listing.year_built || listing.construction_type) && (
+                    <div className="pl-kv-grid" style={{ marginBottom: chattelsList.length ? 16 : 0 }}>
+                      {listing.year_built && (
+                        <div className="pl-kv">
+                          <span className="pl-kv-label">Year built</span>
+                          <span className="pl-kv-val">{listing.year_built}</span>
+                        </div>
+                      )}
+                      {listing.construction_type && (
+                        <div className="pl-kv">
+                          <span className="pl-kv-label">Construction</span>
+                          <span className="pl-kv-val">{CONSTRUCTION_LABELS[listing.construction_type] || listing.construction_type}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {chattelsList.length > 0 && (
+                    <>
+                      <div className="pl-kv-label" style={{ marginBottom: 8 }}>Chattels &amp; extras</div>
+                      <div className="pl-chips">
+                        {chattelsList.map((c, i) => (
+                          <span key={i} className="pl-chip">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M5 13l4 4L19 7"/>
+                            </svg>
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {hasCosts && (
+                <div className="pl-panel p5">
+                  <div className="pl-panel-head">
+                    <span className="pl-title">Costs <em>& rates</em></span>
+                  </div>
+                  <div className="pl-kv-grid">
+                    {listing.rates_annual && (
+                      <div className="pl-kv">
+                        <span className="pl-kv-label">Rates (annual)</span>
+                        <span className="pl-kv-val">{listing.rates_annual}</span>
+                      </div>
+                    )}
+                    {listing.capital_value && (
+                      <div className="pl-kv">
+                        <span className="pl-kv-label">Capital value</span>
+                        <span className="pl-kv-val">{listing.capital_value}</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="pl-kv-hint">Figures supplied by the vendor or taken from the most recent rating assessment.</p>
+                </div>
+              )}
+
+              {hasMedia && (
+                <div className="pl-panel p6">
+                  <div className="pl-panel-head">
+                    <span className="pl-title">Virtual <em>tour</em> & floor plan</span>
+                  </div>
+                  {matterportSrc && (
+                    <div className="pl-media-block">
+                      <div className="pl-media-label">3D tour</div>
+                      <div className="pl-media-frame">
+                        <iframe
+                          title="Matterport 3D tour"
+                          src={matterportSrc}
+                          allow="fullscreen; xr-spatial-tracking"
+                          allowFullScreen
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {youtubeSrc && (
+                    <div className="pl-media-block">
+                      <div className="pl-media-label">Video</div>
+                      <div className="pl-media-frame">
+                        <iframe
+                          title="Property video"
+                          src={youtubeSrc}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          allowFullScreen
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {listing.floor_plan_url && (
+                    <div className="pl-media-block">
+                      <div className="pl-media-label">Floor plan</div>
+                      <a href={listing.floor_plan_url} target="_blank" rel="noreferrer" className="pl-floor-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Open floor plan
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {Array.isArray(listing.nearby_schools) && listing.nearby_schools.length > 0 && (
+                <div className="pl-panel p7">
+                  <div className="pl-panel-head">
+                    <span className="pl-title">Nearby <em>schools</em></span>
+                    <span className="pl-meta">{listing.nearby_schools.length} within 2km</span>
+                  </div>
+                  {listing.nearby_schools.map((s, i) => (
+                    <div key={i} className="pl-school-row">
+                      <div className="pl-school-l">
+                        <div className="pl-school-name">{s.name}</div>
+                        {s.type && <div className="pl-school-type">{s.type}</div>}
+                      </div>
+                      <div className="pl-school-dist">{s.distance_km} km</div>
+                    </div>
+                  ))}
+                  <div className="pl-school-note">Based on straight-line distance. Check school zone maps for enrolment eligibility.</div>
+                </div>
+              )}
+
+            </div>
+
+            <div className="pl-main-right">
+
+              {/* Form (sticky) */}
+              {submitted ? (
+                <div className="pl-panel p1 pl-success-card" style={{ animationDelay: '0s' }}>
+                  <div className="pl-success-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 13l4 4L19 7"/>
                     </svg>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-700 truncate">{d.label}</p>
-                    <p className="text-xs text-slate-500">{KIND_LABELS[d.kind] || 'Document'}</p>
+                  <div>
+                    <div className="pl-success-title">Thanks, {submitted.name}!</div>
+                    <div className="pl-success-body">
+                      {submitted.intent === 'register_interest' ? (
+                        <>
+                          <p>We've noted your interest at <strong>{submitted.email}</strong>.</p>
+                          <p>We'll let you know about open homes and price changes. When you're ready to see the full document pack, come back and hit "Request documents".</p>
+                        </>
+                      ) : (
+                        <>
+                          <p>We've emailed the document links to <strong>{submitted.email}</strong>.</p>
+                          <p>If you don't see the email in 5 minutes, please check your spam folder.</p>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-400 font-medium">
-                    {submitted ? 'Emailed' : 'Locked'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-slate-500 mt-3">
-              {submitted
-                ? 'Check your inbox for download links.'
-                : 'Request access below to have these emailed to you.'}
-            </p>
-          </div>
-        )}
+                </div>
+              ) : (
+                <div className="pl-panel p1">
+                  <div className="pl-form-tabs" role="tablist">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'docs'}
+                      className={`pl-form-tab ${mode === 'docs' ? 'active' : ''}`}
+                      onClick={() => setMode('docs')}
+                    >
+                      Request docs
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'interest'}
+                      className={`pl-form-tab ${mode === 'interest' ? 'active' : ''}`}
+                      onClick={() => setMode('interest')}
+                    >
+                      Register interest
+                    </button>
+                  </div>
 
-        {/* CTA / Success */}
-        {submitted ? (
-          <div className="bg-green-50 border border-green-200 rounded-2xl p-6 sm:p-8 mb-6">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-full bg-green-600 text-white flex items-center justify-center shrink-0">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-green-900">
-                  Thanks, {submitted.name}!
-                </h2>
-                {submitted.intent === 'register_interest' ? (
-                  <>
-                    <p className="text-green-800 mt-1">
-                      We've noted your interest at <strong>{submitted.email}</strong>.
-                    </p>
-                    <p className="text-sm text-green-700 mt-2">
-                      We'll let you know about open homes and price changes. When you're ready to see the full document pack, come back and hit "Request documents".
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-green-800 mt-1">
-                      We've emailed the document links to <strong>{submitted.email}</strong>.
-                    </p>
-                    <p className="text-sm text-green-700 mt-2">
-                      If you don't see the email in 5 minutes, please check your spam folder.
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 mb-6">
-            <div className="flex gap-2 mb-5" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'docs'}
-                onClick={() => setMode('docs')}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  mode === 'docs'
-                    ? 'bg-primary text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                Request documents
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'interest'}
-                onClick={() => setMode('interest')}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  mode === 'interest'
-                    ? 'bg-primary text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                Just register interest
-              </button>
-            </div>
+                  <div className="pl-form-title">
+                    {mode === 'interest' ? <>Register <em>interest</em></> : <>Request <em>documents</em></>}
+                  </div>
+                  <div className="pl-form-lead">
+                    {mode === 'interest'
+                      ? "Let the agent know you're interested — no document request, just a heads-up."
+                      : "Leave your details and we'll email you the full document pack (LIM, title, etc.)."}
+                  </div>
 
-            <h2 className="text-xl font-semibold text-slate-900">
-              {mode === 'interest' ? 'Register your interest' : 'Request documents'}
-            </h2>
-            <p className="text-slate-500 text-sm mt-1 mb-5">
-              {mode === 'interest'
-                ? "Get notified about open homes and price changes — no phone number needed."
-                : "Leave your details and we'll email you the full document pack (LIM, title, etc.)."}
-            </p>
+                  <form onSubmit={handleSubmit}>
+                    <div className="pl-field">
+                      <label htmlFor="lead-name">Full name <span className="pl-req">*</span></label>
+                      <input
+                        id="lead-name"
+                        type="text"
+                        value={form.name}
+                        onChange={e => setForm({ ...form, name: e.target.value })}
+                        placeholder="Your full name"
+                        autoComplete="name"
+                        maxLength={100}
+                        required
+                      />
+                    </div>
+                    <div className="pl-field">
+                      <label htmlFor="lead-email">Email <span className="pl-req">*</span></label>
+                      <input
+                        id="lead-email"
+                        type="email"
+                        value={form.email}
+                        onChange={e => setForm({ ...form, email: e.target.value })}
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                        required
+                      />
+                    </div>
+                    {mode === 'docs' && (
+                      <div className="pl-field">
+                        <label htmlFor="lead-phone">Phone</label>
+                        <input
+                          id="lead-phone"
+                          type="tel"
+                          value={form.phone}
+                          onChange={e => setForm({ ...form, phone: e.target.value })}
+                          placeholder="+64 21 …"
+                          autoComplete="tel"
+                        />
+                      </div>
+                    )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="label" htmlFor="lead-name">Full name *</label>
-                <input
-                  id="lead-name"
-                  className="input"
-                  value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  required
-                  autoComplete="name"
-                  maxLength={100}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="lead-email">Email *</label>
-                <input
-                  id="lead-email"
-                  type="email"
-                  className="input"
-                  value={form.email}
-                  onChange={e => setForm({ ...form, email: e.target.value })}
-                  required
-                  autoComplete="email"
-                />
-              </div>
-              {mode === 'docs' && (
-                <div>
-                  <label className="label" htmlFor="lead-phone">Phone</label>
-                  <input
-                    id="lead-phone"
-                    className="input"
-                    value={form.phone}
-                    onChange={e => setForm({ ...form, phone: e.target.value })}
-                    autoComplete="tel"
-                    placeholder="+64 21 ..."
-                  />
+                    {submitError && <div className="pl-form-error">{submitError}</div>}
+
+                    <button type="submit" className="pl-submit-btn" disabled={submitting}>
+                      {submitting ? 'Sending…' : (mode === 'interest' ? 'Register interest' : 'Request documents')}
+                    </button>
+                    <div className="pl-privacy">Your details are shared with the listing agent only.</div>
+                  </form>
                 </div>
               )}
 
-              {submitError && (
-                <p className="text-sm text-red-600">{submitError}</p>
-              )}
-
-              <button type="submit" disabled={submitting} className="btn-primary w-full justify-center">
-                {submitting
-                  ? 'Sending...'
-                  : mode === 'interest' ? 'Register interest' : 'Request documents'}
-              </button>
-
-              <p className="text-xs text-slate-500 text-center">
-                Your details are shared with the listing agent only.
-              </p>
-            </form>
-          </div>
-        )}
-
-        {/* Agent footer */}
-        {listing.agent_name && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-navy to-primary text-white flex items-center justify-center font-semibold shrink-0">
-              {initialsFromName(listing.agent_name)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-slate-500 uppercase tracking-wide">Presented by</p>
-              <p className="font-semibold text-slate-900 truncate">{listing.agent_name}</p>
-              {(listing.agent_email || listing.agent_phone) && (
-                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-sm">
-                  {listing.agent_phone && (
-                    <a href={`tel:${listing.agent_phone}`} className="text-primary hover:underline">
-                      {listing.agent_phone}
-                    </a>
-                  )}
-                  {listing.agent_email && (
-                    <a href={`mailto:${listing.agent_email}`} className="text-primary hover:underline truncate">
-                      {listing.agent_email}
-                    </a>
-                  )}
+              {docs.length > 0 && (
+                <div className="pl-panel p2">
+                  <div className="pl-panel-head">
+                    <span className="pl-title">Document <em>pack</em></span>
+                    <span className="pl-meta">{docs.length} {docs.length === 1 ? 'file' : 'files'}</span>
+                  </div>
+                  {docs.map((d, i) => (
+                    <div key={d.id} className="pl-doc-card">
+                      <div className="pl-doc-top">
+                        <span className="pl-doc-num">{String(i + 1).padStart(2, '0')}</span>
+                        <span className={`pl-doc-status ${submitted ? 'emailed' : ''}`}>
+                          {submitted ? 'Emailed' : 'Locked'}
+                        </span>
+                      </div>
+                      <div className="pl-doc-illus">
+                        <div className="pl-paper back1" />
+                        <div className="pl-paper back2" />
+                        <div className="pl-paper front">
+                          <div className="pl-line-bar" />
+                          <div className="pl-line-bar" />
+                        </div>
+                      </div>
+                      <div className="pl-doc-title">{d.label || KIND_LABELS[d.kind] || 'Document'}</div>
+                      <div className="pl-doc-desc">{KIND_BLURB[d.kind] || 'Supporting document supplied by the vendor.'}</div>
+                      <div className="pl-doc-foot">
+                        <span className="pl-left-text">{KIND_LABELS[d.kind] || 'Document'}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
+
             </div>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-function PropertyStat({ icon, value, label }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-        {icon}
-      </div>
-      <div>
-        <p className="text-sm font-semibold text-slate-900 leading-tight">{value}</p>
-        <p className="text-xs text-slate-500">{label}</p>
+        </div>
       </div>
     </div>
   );
