@@ -117,6 +117,18 @@
   animation: pl-fade-up .6s ease .1s forwards;
 }
 
+/* ---------- Hero photo card ---------- */
+.pl-hero-photo {
+  position: relative;
+  z-index: 1;
+  border-radius: var(--pl-radius-lg);
+  overflow: hidden;
+  margin-bottom: 20px;
+  box-shadow: 0 30px 60px -20px rgba(11, 18, 32, .35);
+  opacity: 0;
+  animation: pl-fade-up .7s ease .1s forwards;
+}
+
 /* ---------- HERO ROW ---------- */
 .pl-hero-row {
   display: grid;

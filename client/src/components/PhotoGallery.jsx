@@ -50,7 +50,7 @@ export default function PhotoGallery({ images, address }) {
   return (
     <>
       <div
-        className="w-full h-64 sm:h-80 md:h-[28rem] bg-slate-200 relative overflow-hidden"
+        className="w-full aspect-[16/9] max-h-[480px] bg-slate-200 relative overflow-hidden"
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >

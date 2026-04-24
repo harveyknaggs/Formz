@@ -278,8 +278,6 @@ export default function PublicListing() {
 
   return (
     <div className="pl-root">
-      {galleryImages.length > 0 && <PhotoGallery images={galleryImages} address={listing.address} />}
-
       <div className="pl-hero-wrap">
         <div className="pl-hero-bg" />
 
@@ -305,6 +303,12 @@ export default function PublicListing() {
               {saved ? 'Saved' : 'Save'}
             </button>
           </div>
+
+          {galleryImages.length > 0 && (
+            <div className="pl-hero-photo">
+              <PhotoGallery images={galleryImages} address={listing.address} />
+            </div>
+          )}
 
           {/* HERO ROW */}
           <div className="pl-hero-row">
