@@ -672,7 +672,7 @@ router.get('/public/:shortCode', publicFormLimiter, async (req, res) => {
 
   if (!property || property.status !== 'active') return res.status(404).json({ error: 'Listing not found' });
 
-  const documents = await db.prepare('SELECT id, kind, label FROM property_documents WHERE property_id = ? ORDER BY uploaded_at DESC').all(property.id);
+  const documents = await db.prepare('SELECT id, kind FROM property_documents WHERE property_id = ? ORDER BY uploaded_at DESC').all(property.id);
 
   let images = await db.prepare('SELECT id, url, thumb_url, alt, sort_order, width, height, is_hero FROM property_images WHERE property_id = ? ORDER BY is_hero DESC, sort_order ASC, id ASC').all(property.id);
 
