@@ -100,8 +100,9 @@ function initialsFromName(name) {
 function parsePriceParts(price) {
   if (!price) return null;
   const str = String(price).trim();
+  if (!str) return null;
   const match = str.match(/^([^\d-]*)([\d,]+(?:\.\d+)?)(.*)$/);
-  if (!match) return { currency: '', number: str, suffix: '' };
+  if (!match) return { plain: str };
   return { currency: match[1].trim() || '$', number: match[2], suffix: match[3].trim() };
 }
 
@@ -329,9 +330,15 @@ export default function PublicListing() {
                 <div className="pl-price-block">
                   <div className="pl-price-label">Asking price</div>
                   <div className="pl-price">
-                    <span className="pl-currency">{priceParts.currency || '$'}</span>
-                    {priceParts.number}
-                    {priceParts.suffix && <span style={{ fontSize: '24px', marginLeft: 6 }}>{priceParts.suffix}</span>}
+                    {priceParts.plain ? (
+                      <span className="pl-price-plain">{priceParts.plain}</span>
+                    ) : (
+                      <>
+                        <span className="pl-currency">{priceParts.currency || '$'}</span>
+                        {priceParts.number}
+                        {priceParts.suffix && <span style={{ fontSize: '24px', marginLeft: 6 }}>{priceParts.suffix}</span>}
+                      </>
+                    )}
                   </div>
                 </div>
               )}
