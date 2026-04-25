@@ -6,6 +6,9 @@ client/dist/
 # Runtime-uploaded files (property docs + images)
 server/uploads/
 
+# Dogfood/test-run output dumps
+scripts/dogfood-output.json
+
 # Claude Code per-user local config
 .claude/settings.local.json
 .claude/launch.json
