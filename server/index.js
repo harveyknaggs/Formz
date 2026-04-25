@@ -9,8 +9,7 @@ const { UPLOADS_DIR } = require('./config/paths');
 
 async function start() {
   if (process.env.NODE_ENV === 'production' && !process.env.APP_URL) {
-    console.error('FATAL: APP_URL must be set in production — emailed download links will be dead otherwise.');
-    process.exit(1);
+    console.error('WARNING: APP_URL is not set — emailed download links will point to localhost and be dead. Set it in your env config.');
   }
 
   // Initialize DB first
