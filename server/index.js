@@ -8,6 +8,11 @@ const { authLimiter, publicFormLimiter, genericApiLimiter } = require('./middlew
 const { UPLOADS_DIR } = require('./config/paths');
 
 async function start() {
+  if (process.env.NODE_ENV === 'production' && !process.env.APP_URL) {
+    console.error('FATAL: APP_URL must be set in production — emailed download links will be dead otherwise.');
+    process.exit(1);
+  }
+
   // Initialize DB first
   await init();
 
