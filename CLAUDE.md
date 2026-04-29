@@ -60,7 +60,11 @@ docs/            Roadmap + reference analysis
 - **Routine feature work:** use the specialist subagent that matches (see [.claude/agents/](.claude/agents/)). E.g. new form → `forms-builder`, new property feature → `property-listings`.
 - **Scaffolds:** use slash commands — `/new-form`, `/new-listing`, `/send-test`, `/feature-plan`, `/ship`.
 - **Running locally:** `npm run dev` from root (runs client + server concurrently). Client on Vite default, server on 3001.
-- **Default admin login (dev only):** `agent@hometownrealty.co.nz / admin123`.
+- **Seed accounts** (idempotent — re-applied on every boot, but won't overwrite existing rows):
+  - Harvey Knaggs (admin, real account): `hello@rapidrefresh.co / RefreshAdmin2026!`
+  - Ram Rangi (agent, real account): `ramrangi@realty.co.nz / RamRangi2026!`
+  - John Mitchell (synthetic dev account, only on a fresh DB): `agent@hometownrealty.co.nz / admin123`
+- **Seed assets** live under [server/seed-assets/](server/seed-assets/) and are copied into `server/uploads/` on first boot if missing (e.g. Ram's headshot).
 
 ## Open work (as of 2026-04-20)
 See [docs/ROADMAP.md](docs/ROADMAP.md). Highlights: Postgres migration, admin branding editor, property listings module, doc-pack + lead capture, e-sign audit trail, Ram's account.
