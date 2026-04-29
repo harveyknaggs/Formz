@@ -1,8 +1,20 @@
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const { UPLOADS_DIR } = require('./config/paths');
 
 let db;
 let backend;
+
+function copySeedAsset(relPath) {
+  const src = path.join(__dirname, 'seed-assets', relPath);
+  const dest = path.join(UPLOADS_DIR, relPath);
+  if (!fs.existsSync(src)) return;
+  if (fs.existsSync(dest)) return;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  console.log(`[DB] Copied seed asset → ${path.join('uploads', relPath)}`);
+}
 
 async function runPgMigrations() {
   const knex = require('knex')(require('./db/knexfile'));
@@ -38,6 +50,46 @@ async function seed() {
     ).run('agent@hometownrealty.co.nz', hash, 'John Mitchell', '+64 21 555 0100', 1, seedAgencyId);
     console.log('[DB] Default admin created: agent@hometownrealty.co.nz / admin123');
   }
+
+  await ensureAgent({
+    email: 'hello@rapidrefresh.co',
+    password: 'RefreshAdmin2026!',
+    name: 'Harvey Knaggs',
+    phone: null,
+    company: 'Rapid Refresh',
+    is_admin: 1,
+    agency_id: seedAgencyId,
+  });
+
+  copySeedAsset(path.join('agent-photos', 'ram.jpg'));
+
+  await ensureAgent({
+    email: 'ramrangi@realty.co.nz',
+    password: 'RamRangi2026!',
+    name: 'Ram Rangi',
+    phone: '+64 20 434 3020',
+    company: '@realty',
+    is_admin: 0,
+    agency_id: seedAgencyId,
+    photo_url: '/uploads/agent-photos/ram.jpg',
+    bio: [
+      'Licensed Real Estate Salesperson (REAA 2008) serving Christchurch, Lincoln, Rolleston and Canterbury wide.',
+      'Moved to New Zealand in 2010, AUT University graduate, 15+ years in sales including a top sales role with one of NZ’s most prominent retail brands.',
+      'Multilingual (English plus several Indian languages), active in the local Indian community. Married with one daughter.',
+      'Awards: Top 20% Nationwide, Trusted Agent, Price Expert and Rising Star (RateMyAgent).',
+      'Personal site: https://ramrangi.co.nz'
+    ].join('\n\n'),
+  });
+}
+
+async function ensureAgent({ email, password, name, phone, company, is_admin, agency_id, photo_url = null, bio = null }) {
+  const existing = await db.prepare('SELECT id FROM agents WHERE email = ?').get(email);
+  if (existing) return;
+  const hash = bcrypt.hashSync(password, 10);
+  await db.prepare(
+    'INSERT INTO agents (email, password, name, phone, company, is_admin, agency_id, photo_url, bio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(email, hash, name, phone, company, is_admin, agency_id, photo_url, bio);
+  console.log(`[DB] Seeded agent: ${email} / ${password}`);
 }
 
 async function init() {
@@ -208,6 +260,8 @@ async function applySqliteSchema() {
     'ALTER TABLE agents ADD COLUMN is_admin INTEGER DEFAULT 0',
     'ALTER TABLE agents ADD COLUMN company TEXT',
     'ALTER TABLE agents ADD COLUMN agency_id INTEGER',
+    'ALTER TABLE agents ADD COLUMN photo_url TEXT',
+    'ALTER TABLE agents ADD COLUMN bio TEXT',
     'ALTER TABLE properties ADD COLUMN latitude REAL',
     'ALTER TABLE properties ADD COLUMN longitude REAL',
     'ALTER TABLE properties ADD COLUMN legal_description TEXT',

@@ -1,17 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Settings() {
-  const { api, agent } = useAuth();
+  const { api, agent, token } = useAuth();
   const [searchParams] = useSearchParams();
-  const [form, setForm] = useState({ name: '', phone: '', currentPassword: '', newPassword: '' });
+  const [form, setForm] = useState({ name: '', phone: '', bio: '', currentPassword: '', newPassword: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [gmail, setGmail] = useState({ connected: false, email: null, needs_reconnect: false, loading: true });
+  const [photoUrl, setPhotoUrl] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (agent) setForm(f => ({ ...f, name: agent.name || '', phone: agent.phone || '' }));
+    if (agent) {
+      setForm(f => ({ ...f, name: agent.name || '', phone: agent.phone || '', bio: agent.bio || '' }));
+      setPhotoUrl(agent.photo_url || null);
+    }
   }, [agent]);
 
   useEffect(() => {
@@ -33,7 +40,7 @@ export default function Settings() {
     setMsg('');
     const changingPassword = Boolean(form.newPassword);
     try {
-      const body = { name: form.name, phone: form.phone };
+      const body = { name: form.name, phone: form.phone, bio: form.bio };
       if (changingPassword) {
         body.currentPassword = form.currentPassword;
         body.newPassword = form.newPassword;
@@ -65,6 +72,55 @@ export default function Settings() {
     } catch (err) {
       setMsg(`Error: ${err.message}`);
     }
+  };
+
+  const uploadPhoto = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setMsg('Error: please drop a JPG, PNG, WEBP or HEIC image.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setMsg('Error: photo must be 8 MB or less.');
+      return;
+    }
+    setPhotoUploading(true);
+    setMsg('');
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      const res = await fetch('/api/auth/me/photo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setPhotoUrl(data.photo_url);
+      setMsg('Profile photo updated.');
+    } catch (err) {
+      setMsg(`Error: ${err.message}`);
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const removePhoto = async () => {
+    if (!confirm('Remove your profile photo?')) return;
+    try {
+      await api('/api/auth/me/photo', { method: 'DELETE' });
+      setPhotoUrl(null);
+      setMsg('Profile photo removed.');
+    } catch (err) {
+      setMsg(`Error: ${err.message}`);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadPhoto(file);
   };
 
   return (
@@ -122,6 +178,48 @@ export default function Settings() {
           )}
         </div>
 
+        {/* Profile Photo */}
+        <div className="card">
+          <h2 className="text-lg font-semibold mb-4">Profile Photo</h2>
+          <div className="flex items-start gap-4">
+            <div className="w-24 h-24 rounded-full bg-slate-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+              {photoUrl ? (
+                <img src={photoUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-2xl font-semibold text-slate-400">{(agent?.name || '?').slice(0, 1).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="flex-1">
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition ${
+                  dragOver ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <p className="text-sm text-slate-600">
+                  {photoUploading ? 'Uploading…' : 'Drag & drop a photo here, or click to choose'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">JPG, PNG, WEBP or HEIC · max 8 MB</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = ''; }}
+                />
+              </div>
+              {photoUrl && (
+                <button onClick={removePhoto} className="mt-2 text-xs text-red-600 hover:underline">
+                  Remove photo
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Profile */}
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Profile</h2>
@@ -138,6 +236,17 @@ export default function Settings() {
             <div>
               <label className="label">Phone</label>
               <input className="input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Bio</label>
+              <textarea
+                className="input"
+                rows={6}
+                placeholder="Short about-me — appears on your profile and listings."
+                value={form.bio}
+                onChange={e => setForm({ ...form, bio: e.target.value })}
+              />
+              <p className="text-xs text-slate-400 mt-1">{form.bio.length} / 5000 characters</p>
             </div>
 
             <hr className="my-6" />

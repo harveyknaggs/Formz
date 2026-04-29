@@ -118,10 +118,19 @@ export default function Admin() {
               ) : filteredAgents.map(a => (
                 <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="py-3 px-3">
-                    <div>
-                      <p className="font-medium text-slate-900">{a.name}</p>
-                      <p className="text-xs text-slate-500">{a.email}</p>
-                      {a.phone && <p className="text-xs text-slate-400">{a.phone}</p>}
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-slate-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        {a.photo_url ? (
+                          <img src={a.photo_url} alt={a.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xs font-semibold text-slate-400">{(a.name || '?').slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-900">{a.name}</p>
+                        <p className="text-xs text-slate-500">{a.email}</p>
+                        {a.phone && <p className="text-xs text-slate-400">{a.phone}</p>}
+                      </div>
                     </div>
                   </td>
                   <td className="py-3 px-3 text-slate-600">{a.company || '—'}</td>
