@@ -66,8 +66,12 @@ export default function Layout() {
 
         <div className="p-4 border-t border-white/10">
           <div className="flex items-center gap-3 px-4 py-2">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-sm font-bold">
-              {agent?.name?.charAt(0) || 'A'}
+            <div className="w-8 h-8 rounded-full bg-primary overflow-hidden flex items-center justify-center text-sm font-bold flex-shrink-0">
+              {agent?.photo_url ? (
+                <img src={agent.photo_url} alt={agent.name || 'Profile'} className="w-full h-full object-cover" />
+              ) : (
+                agent?.name?.charAt(0) || 'A'
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{agent?.name}</p>
