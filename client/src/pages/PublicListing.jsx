@@ -129,6 +129,7 @@ export default function PublicListing() {
   const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [bioOpen, setBioOpen] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -408,7 +409,13 @@ export default function PublicListing() {
                 <div className="pl-agent-card">
                   <div className="pl-agent-label">Presented by</div>
                   <div className="pl-agent-head">
-                    <div className="pl-agent-avatar">{initialsFromName(listing.agent_name)}</div>
+                    <div className="pl-agent-avatar">
+                      {listing.agent_photo_url ? (
+                        <img src={listing.agent_photo_url} alt={listing.agent_name} />
+                      ) : (
+                        initialsFromName(listing.agent_name)
+                      )}
+                    </div>
                     <div>
                       <div className="pl-agent-name">{listing.agent_name}</div>
                       <div className="pl-agent-role">Listing agent</div>
@@ -432,6 +439,26 @@ export default function PublicListing() {
                           </svg>
                           {listing.agent_email}
                         </a>
+                      )}
+                    </div>
+                  )}
+                  {listing.agent_bio && (
+                    <div className="pl-agent-bio-wrap">
+                      <button
+                        type="button"
+                        className="pl-agent-bio-toggle"
+                        onClick={() => setBioOpen(o => !o)}
+                        aria-expanded={bioOpen}
+                      >
+                        {bioOpen ? 'Hide bio' : `About ${listing.agent_name.split(' ')[0]}`}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: bioOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </button>
+                      {bioOpen && (
+                        <div className="pl-agent-bio">
+                          {listing.agent_bio.split(/\n\n+/).map((p, i) => <p key={i}>{p}</p>)}
+                        </div>
                       )}
                     </div>
                   )}

@@ -331,6 +331,12 @@
   border: 1px solid color-mix(in srgb, var(--pl-blue) 20%, var(--pl-line));
   flex-shrink: 0;
   box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--pl-blue) 40%, transparent);
+  overflow: hidden;
+}
+.pl-agent-avatar img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .pl-agent-name {
   font-size: 18px;
@@ -366,6 +372,36 @@
 .pl-agent-contact a:hover { color: var(--pl-blue); }
 .pl-agent-contact svg { width: 14px; height: 14px; color: var(--pl-ink-muted); flex-shrink: 0; }
 .pl-agent-contact a:hover svg { color: var(--pl-blue); }
+
+.pl-agent-bio-wrap {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #d0d4dd;
+  position: relative; z-index: 1;
+}
+.pl-agent-bio-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pl-blue);
+  font-family: inherit;
+}
+.pl-agent-bio-toggle:hover { text-decoration: underline; }
+.pl-agent-bio-toggle svg { width: 14px; height: 14px; }
+.pl-agent-bio {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--pl-ink-soft);
+}
+.pl-agent-bio p { margin: 0 0 10px; }
+.pl-agent-bio p:last-child { margin-bottom: 0; }
 
 /* Share card */
 .pl-share-card {

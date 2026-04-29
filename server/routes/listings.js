@@ -664,7 +664,8 @@ router.get('/public/:shortCode', publicFormLimiter, async (req, res) => {
            p.land_area_m2, p.parcel_titles, p.tenure_type,
            p.year_built, p.construction_type, p.chattels, p.rates_annual, p.capital_value,
            p.matterport_url, p.youtube_url, p.floor_plan_url, p.sale_method, p.sale_deadline_at,
-           a.name AS agent_name, a.email AS agent_email, a.phone AS agent_phone
+           a.name AS agent_name, a.email AS agent_email, a.phone AS agent_phone,
+           a.photo_url AS agent_photo_url, a.bio AS agent_bio
     FROM properties p
     JOIN agents a ON a.id = p.agent_id
     WHERE p.short_code = ?
